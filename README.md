@@ -1,137 +1,88 @@
 # steambrite-tax
 
-The complete Ohio sales-tax stack for Steambrite, in one self-maintaining repo.
+[![Refresh Ohio tax data](https://github.com/jefe2332/steambrite-tax/actions/workflows/refresh-data.yml/badge.svg)](https://github.com/jefe2332/steambrite-tax/actions/workflows/refresh-data.yml)
 
-It computes **exact** Ohio sales-tax rates (state + county + transit district) from
-the Ohio Department of Taxation's official **"The Finder"** Streamlined Sales Tax
-files — no paid APIs, no guessing. Once the one-time setup below is done, the
-whole thing keeps itself current with **zero quarterly work**.
+**Street-address-accurate Ohio sales-tax rates, built entirely from the state's official data — no paid APIs, no API keys, and zero recurring maintenance.**
 
-## What's in here
+A Chrome extension surfaces the right rate (and the matching accounting label) directly inside [Jobber](https://getjobber.com), backed by a Cloud Run API and a data pipeline that rebuilds itself every quarter via GitHub Actions.
 
-| Folder | What it is |
+## Why this exists
+
+Most "free sales tax" data is a per-ZIP estimate — and in Ohio, that's structurally wrong. Ohio levies sales tax by **county plus transit district** (COTA, TARTA, MVRTA…), and ZIP codes routinely straddle those boundaries:
+
+- ZIP **43082** (Westerville) contains three different jurisdictions: Delaware County (7.00%), Delaware-inside-COTA (8.00%), and Franklin-inside-COTA (8.00%).
+- ZIP **43068** (Reynoldsburg) spans rates from 7.25% to **8.25%** — a ZIP-blended table quietly overcharges or undercharges most of it.
+
+The fix: Ohio publishes the exact answer for free. The Department of Taxation's [**The Finder**](https://thefinder.tax.ohio.gov/) distributes Streamlined Sales Tax boundary and rate files — per-ZIP, per-ZIP+4, and **per-street-address-range** jurisdiction records. This repo compiles those files into a compact lookup and puts it everywhere it's needed.
+
+## How a lookup resolves
+
+```
+ZIP5 unambiguous ──────────────────────────────► exact
+ZIP5 ambiguous ─► ZIP+4 range match ───────────► exact
+               ─► street address-range match ──► exact
+               ─► street known in this ZIP ────► ZIP default (exact)
+               ─► unknown street ─► Census geocoder, but only trusted
+                                    if it echoes the same ZIP ───► high
+               ─► anything else ───────────────► ZIP default (verify)
+```
+
+Every response carries a confidence level, and "verify" answers link straight to The Finder so a human can confirm a boundary case in seconds. The Census geocoder guard exists because fuzzy geocoders love to snap nonexistent addresses onto the wrong side of a county line — a failure mode this stack was specifically tested against.
+
+## Architecture
+
+```mermaid
+flowchart TD
+    ODT["Ohio Dept. of Taxation<br/>The Finder — SST boundary + rate files"]
+    GHA["GitHub Action (quarterly + on demand)<br/>node pipeline/build.js --fresh"]
+    Pages["GitHub Pages<br/>ohio-tax-data.min.json + addr-shards/"]
+    BE["Backend — Cloud Run<br/>/api/lookup · refetches daily"]
+    EXT["Chrome extension (MV3)<br/>local resolver · refetches every 3 days"]
+    Jobber["Jobber pages<br/>rate badge + tax-group label"]
+
+    ODT -->|download + verify| GHA --> Pages
+    Pages --> BE
+    Pages --> EXT
+    EXT --> Jobber
+    EXT -.->|last-resort fallback| BE
+```
+
+Both consumers ship with a bundled data snapshot, so they work offline on day one and degrade gracefully if the hosted copy is ever unreachable. Ohio only changes rates on quarter boundaries (Jan/Apr/Jul/Oct 1); the Action runs on the 2nd, so the fleet is never more than a few days behind a change — with no human in the loop.
+
+## What's in the repo
+
+| Path | What it is |
 |---|---|
-| `backend/` | The `tax.steambrite.us` server (Express). Serves exact Ohio rates from official Finder data via `/api/lookup`, self-refreshes its data daily, and falls back to Gemini for non-Ohio addresses. Deploys to Cloud Run. |
-| `pipeline/` | `build.js` downloads Ohio's Finder boundary + rate files and compiles them into `ohio-tax-data.min.json` + per-ZIP address shards. `verify.js` cross-checks the result against the state's own rate report. |
-| `extension/` | The Chrome (MV3) extension that suggests the exact county+transit and the matching Jobber tax group for addresses on Jobber pages. |
-| `docs/` | Background: the rebuild plan and the Jobber tax-cleanup notes. |
-| `.github/workflows/refresh-data.yml` | Quarterly GitHub Action that re-runs the pipeline and publishes fresh data to GitHub Pages. |
+| [`pipeline/`](pipeline/) | Downloads and parses the state's 1.9M-row boundary file into a 1.5 MB lookup (ZIP5/ZIP+4 tables + 556 per-ZIP street shards), then **verifies all 88 county totals against the state's own published rate report** before anything ships. |
+| [`extension/`](extension/) | Manifest V3 Chrome extension. Scans Jobber pages for addresses (React-controlled forms included), resolves rates locally in a service worker, and injects a suggested-tax badge with the matching Jobber tax-group name. 134 unit tests, no dependencies, no build step. |
+| [`backend/`](backend/) | Express server for Cloud Run. Same resolver, same data; serves `/api/lookup` as the extension's last-resort fallback and a standalone web calculator. |
+| [`docs/`](docs/) | [Operator setup runbook](docs/SETUP.md), the original rebuild plan, and accounting-integration notes. |
+| [`.github/workflows/`](.github/workflows/) | The quarterly self-refresh: rebuild → verify → publish to Pages. |
 
-## How it all fits together
+## Data quality
 
-```
-                    ┌───────────────────────────────────────────────┐
-                    │  Ohio Dept. of Taxation — "The Finder" files   │
-                    └───────────────────────┬───────────────────────┘
-                                            │ (quarterly)
-                          GitHub Action ► node pipeline/build.js --fresh
-                                            │
-                                            ▼
-                        GitHub Pages: ohio-tax-data.min.json + addr-shards/
-                                            │
-                     ┌──────────────────────┴───────────────────────┐
-                     ▼                                               ▼
-          backend (Cloud Run)                             Chrome extension
-   re-fetches the data every 24h                   re-fetches the data every 3 days
-   /api/lookup → exact OH rate                     shows county+transit + Jobber group
-```
+- Source: Ohio DoT's Streamlined Sales Tax boundary + rate files — the same dataset the state's own lookup runs on. Under the SST agreement, sellers relying on these files receive [liability relief for rate errors](https://www.streamlinedsalestax.org/Shared-Pages/rate-and-boundary-files).
+- Every build cross-checks all 88 computed county totals (including COTA/TARTA split districts) against the state's independently published county rate report and fails loudly on any mismatch.
+- Verification history and methodology: [`pipeline/README.md`](pipeline/README.md).
 
-Both the backend and the extension **ship with a bundled copy** of the data, so
-they work immediately and degrade gracefully if the hosted copy is ever
-unreachable. Each just fetches the hosted copy periodically and upgrades itself
-when a newer quarter appears.
+*This project distributes public government data as-is. It is not tax advice; confirm edge cases with [The Finder](https://thefinder.tax.ohio.gov/) or a tax professional.*
 
----
-
-## ONE-TIME SETUP
-
-Do these once. After that, nothing needs manual quarterly attention.
-
-### 1. Publish this repo (GitHub Desktop)
-
-1. Open **GitHub Desktop → File → Add local repository** and choose this
-   `steambrite-tax` folder. (A git repo with an initial commit already exists.)
-2. Click **Publish repository**. Keep it **public** and name it `steambrite-tax`.
-
-### 2. Turn on GitHub Pages + run the data build once
-
-1. On GitHub: **repo → Settings → Pages → Build and deployment → Source = "GitHub Actions"**.
-2. Go to the **Actions** tab → **"Refresh Ohio tax data"** → **Run workflow**
-   (on `main`). Let it finish (it downloads the state files, builds the data,
-   and deploys to Pages — a few minutes).
-3. Note the published **Pages URL**. It will be:
-   `https://<your-github-username>.github.io/steambrite-tax/`
-   - Data file: `https://<your-github-username>.github.io/steambrite-tax/ohio-tax-data.min.json`
-   - Shards:    `https://<your-github-username>.github.io/steambrite-tax/addr-shards`
-
-### 3. Point Cloud Run at this repo
-
-1. Google Cloud Console → **Cloud Run → your `sales-tax-calculator-v2` service → Edit & deploy new revision / Edit repo settings**.
-2. **Disconnect** the old connected repo and **connect** `steambrite-tax` instead.
-3. Set the **build context / source directory to `backend/`** (buildpacks; a
-   `package.json` is present, so it builds the frontend with `npm run build` and
-   starts with `npm start`).
-4. (Optional) Set env vars so the backend reads the fresh data from your Pages URL
-   instead of the Google Cloud Storage defaults:
-   - `DATA_URL = https://<your-github-username>.github.io/steambrite-tax/ohio-tax-data.min.json`
-   - `SHARD_BASE_URL = https://<your-github-username>.github.io/steambrite-tax/addr-shards`
-   - `GEMINI_API_KEY = <key>` — **only** needed if you want non-Ohio lookups. Without
-     it, non-Ohio addresses return HTTP 422 (Ohio lookups never need it).
-
-   Leaving these unset now uses the GitHub Pages defaults baked into
-   `server.js` (`jefe2332.github.io/steambrite-tax`). The old GCS bucket
-   (`storage.googleapis.com/tax-rate-calculator-assets`) remains available as a
-   manual fallback host — set these env vars to it if Pages is ever down.
-
-From now on, **every push to `main` auto-deploys the backend.**
-
-### 4. Point the extension at the Pages data (optional, no reinstall)
-
-The extension already ships with `https://*.github.io/*` host permission, so you
-can switch it to your Pages data **without reinstalling**:
-
-1. Load/keep the extension from `extension/` (Chrome → Extensions → Load unpacked),
-   or use your published build.
-2. Open the extension's **Options** and set:
-   - **Data URL** = `https://<your-github-username>.github.io/steambrite-tax/ohio-tax-data.min.json`
-   - **Shard base URL** = `https://<your-github-username>.github.io/steambrite-tax/addr-shards`
-3. Click **Check for updates**. It should report the current data version.
-
-These Pages URLs are already the extension's built-in defaults (since v2.0.2),
-so a fresh install needs no Options changes. The GCS bucket remains a
-documented manual fallback if Pages is ever unavailable.
-
----
-
-## How it stays current
-
-Ohio only changes sales-tax rates on **quarter boundaries** (Jan 1 / Apr 1 / Jul 1 / Oct 1).
-
-- **Quarterly GitHub Action** — On the 2nd of Jan/Apr/Jul/Oct (and on demand, and
-  on any push that touches `pipeline/**`), the Action re-downloads the state files,
-  rebuilds the data, verifies it against Ohio's own rate report, and publishes it
-  to GitHub Pages. `build.js` uses the **current date** as its effective-date
-  filter, so it always picks up whichever quarter is live when it runs.
-- **Backend re-fetches daily** — On boot and every 24h the backend fetches
-  `DATA_URL` and hot-swaps to a newer quarter in memory. Fetch failures are
-  non-fatal: it keeps serving the last-known-good data (bundled snapshot at worst).
-- **Extension re-fetches every 3 days** — The MV3 service worker checks the data
-  URL on an alarm and upgrades itself when a newer version appears.
-
-So after the one-time setup: the Action refreshes the source of truth each
-quarter, and both consumers pull it in automatically. No manual steps.
-
-## Local development
+## Quick start
 
 ```bash
-# Backend
-cd backend
-npm install
-npm run dev            # http://localhost:3000  (Vite dev middleware + API)
+# Rebuild the dataset from the state's current files (needs curl + unzip)
+cd pipeline && node build.js --fresh
 
-# Rebuild the data locally (needs curl + unzip; downloads ~48MB to pipeline/raw)
-cd pipeline
-node build.js --fresh  # writes pipeline/dist/… and prints a verification summary
+# Run the API locally
+cd backend && npm install && npm run dev   # http://localhost:3000
+
+# Run the test suites (plain node, no framework)
+node extension/tests/resolver.test.js
+node extension/tests/scanner.test.js
 ```
 
-See `backend/TESTING.md` for the recorded `/api/lookup` smoke-test results.
+Load the extension unpacked from `extension/` via `chrome://extensions` → Developer mode. Full deployment instructions (Pages hosting, Cloud Run continuous deploy, team rollout): [`docs/SETUP.md`](docs/SETUP.md).
+
+---
+
+Built for [Steambrite](https://steambrite.us) — carpet cleaning with correctly-calculated sales tax.
