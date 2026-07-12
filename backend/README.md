@@ -1,4 +1,4 @@
-# backend — tax.steambrite.us
+# backend - tax.steambrite.us
 
 Express server that powers the sales-tax calculator SPA and the `/api/lookup`
 API. Deploys to Cloud Run (buildpacks: `npm run build` → `npm start`).

@@ -34,10 +34,10 @@ if present, otherwise PowerShell `Expand-Archive`.
 | File | Size | Contents |
 |---|---|---|
 | `ohio-tax-data.json` | ~3.3 MB | Pretty-printed main lookup |
-| `ohio-tax-data.min.json` | ~1.45 MB (gzip ~0.20 MB) | Minified main lookup — **bundle this in the extension** |
+| `ohio-tax-data.min.json` | ~1.45 MB (gzip ~0.20 MB) | Minified main lookup - **bundle this in the extension** |
 | `ohio-addr-ranges.json` | ~30 MB (gzip ~2.3 MB) | Street-address override ranges for ambiguous ZIPs, combined (for analysis / hosting whole) |
-| `addr-shards/<zip5>.json` | 556 files, ~33.3 MB total (median ~18.6 KB, max ~581 KB) | Per-ZIP address override shards + street directory — **host these; the extension fetches only the shard for the ZIP it needs** |
-| `VERIFICATION.md` | — | Rate cross-checks vs the state's own report |
+| `addr-shards/<zip5>.json` | 556 files, ~33.3 MB total (median ~18.6 KB, max ~581 KB) | Per-ZIP address override shards + street directory - **host these; the extension fetches only the shard for the ZIP it needs** |
+| `VERIFICATION.md` | - | Rate cross-checks vs the state's own report |
 
 ### Main file shape (`ohio-tax-data.json`)
 
@@ -94,13 +94,13 @@ raw A-records (default rows included; +1.56 MB across all shards, ~107k names).
 It lets a consumer distinguish two very different "no override matched" cases:
 
 - street **in** `streets`, no override row → the address is the ZIP's
-  **default** combo (`zip5[zip].d`) — the shards are lossless override-only
+  **default** combo (`zip5[zip].d`) - the shards are lossless override-only
   compactions, so absence from `addr` for a known street *means* default;
 - street **not in** `streets` → the street doesn't exist in this ZIP
-  (typo / nonexistent number) — geocoder fuzzy matches must NOT be trusted
+  (typo / nonexistent number) - geocoder fuzzy matches must NOT be trusted
   unless the geocoder's matched address is in the same ZIP.
 
-Every ambiguous ZIP gets a shard — one with no address overrides (`45481`)
+Every ambiguous ZIP gets a shard - one with no address overrides (`45481`)
 still gets `"addr": []` so a fetch never 404s. `v` echoes `meta.version` so the
 extension can detect a stale shard vs its bundled main file. Unambiguous ZIPs
 have no shard (they never need one).

@@ -20,8 +20,8 @@ Taxation ("The Finder") data, and shows:
 3. Toggle **Developer mode** ON (top right).
 4. Click **Load unpacked** → select the `chrome-tax-extension-v2` folder.
 5. (If replacing v1: click **Remove** on the old v1 "Jobber Tax Calculator
-   Extension" entry first — same name, so check the version says 2.0.1.)
-6. Open any Jobber client/quote/invoice page — badges appear automatically;
+   Extension" entry first - same name, so check the version says 2.0.1.)
+6. Open any Jobber client/quote/invoice page - badges appear automatically;
    click the extension icon for the full cards.
 
 Re-installing is only needed for **code** changes. **Tax data updates itself**
@@ -39,9 +39,9 @@ For each address the service worker resolves, in order (first hit wins):
 | 4 | Census geocoder (free, no key) → county → filter ZIP's candidates | High (single match) / Verify (transit split) |
 | 5 | FCC area API (lat/lon from Census) | High / Verify |
 | 6 | Legacy backend `tax.steambrite.us` | Estimate |
-| — | Everything offline: ZIP's default combo | Verify |
+| - | Everything offline: ZIP's default combo | Verify |
 
-**Verify** badges show "⚠ boundary area — verify" plus a one-click link to
+**Verify** badges show "⚠ boundary area - verify" plus a one-click link to
 [Ohio's The Finder](https://thefinder.tax.ohio.gov/streamlinesalestaxweb/AddressLookup/LookupByAddress.aspx?taxType=Sales)
 so a human can confirm in ~10 seconds. Rate math is always
 `state 5.75% + county + (transit if any)`.
@@ -52,7 +52,7 @@ per normalized address for the browser session.
 
 ## Data auto-update
 
-- The extension ships with `data/ohio-tax-data.json` (2026Q1 vintage) — that
+- The extension ships with `data/ohio-tax-data.json` (2026Q1 vintage) - that
   bundled file is the floor; it works fully offline.
 - Every **3 days** (and on install) the service worker fetches the hosted
   `ohio-tax-data.min.json` (URL configurable in Options). If the hosted
@@ -61,11 +61,11 @@ per normalized address for the browser session.
 - The active version + source (bundled/remote) shows in the popup footer and
   on the Options page, which also has a **"Check for data update now"** button.
 - Default hosting is **GitHub Pages** (`jefe2332.github.io/steambrite-tax`),
-  published automatically by the repo's data workflow — any push touching
+  published automatically by the repo's data workflow - any push touching
   `pipeline/**` (or the quarterly schedule) rebuilds and republishes data +
   shards. All installed extensions pick it up within 3 days.
 - Manual fallback host: the GCS bucket
-  (`storage.googleapis.com/tax-rate-calculator-assets`) — run
+  (`storage.googleapis.com/tax-rate-calculator-assets`) - run
   `node pipeline/build.js` and upload `dist/ohio-tax-data.min.json` +
   `dist/addr-shards/*` there, then point Options at it.
 
@@ -74,9 +74,9 @@ per normalized address for the browser session.
 - **Endpoints:** data URL, address-shard base URL, legacy backend URL.
 - **Jobber tax-group labels:** every Ohio jurisdiction combo with its default
   label. Built-in defaults match Steambrite's actual current Jobber groups
-  (`OH-Warren`, `OH-Franklin`, `OH-Montgomery-57000`, `OH-Hamilton`, …).
+  (`OH-Warren`, `OH-Franklin`, `OH-Montgomery-57000`, `OH-Hamilton`, ...).
   Combos with no mapping show the data file's suggested name +
-  "(add this group in Jobber)". Type an override to change any label —
+  "(add this group in Jobber)". Type an override to change any label -
   overrides sync across your Chrome profile (`storage.sync`).
 
 ## Files
@@ -109,11 +109,11 @@ node tests/scanner.test.js
 |---|---|
 | Popup says "Could not connect to the page" | Refresh the Jobber tab (content script loads on page load), then Refresh in the popup. |
 | No badges on the page | Only complete addresses (street + city + state + ZIP) get badges. Check the popup for what was found. |
-| Badge shows "⚠ boundary area — verify" | The ZIP straddles a tax boundary and online disambiguation was inconclusive/offline. Click "Check in The Finder", confirm, pick the group manually. |
-| "Estimate (legacy backend)" | Local data had no answer (e.g. non-Ohio address); the old Cloud Run backend supplied a blended estimate — treat with care. |
-| Popup footer says Data: … (bundled) forever | Hosted data isn't published yet, or the data URL in Options is wrong. That's fine — bundled data is current until next quarter. |
+| Badge shows "⚠ boundary area - verify" | The ZIP straddles a tax boundary and online disambiguation was inconclusive/offline. Click "Check in The Finder", confirm, pick the group manually. |
+| "Estimate (legacy backend)" | Local data had no answer (e.g. non-Ohio address); the old Cloud Run backend supplied a blended estimate - treat with care. |
+| Popup footer says Data: ... (bundled) forever | Hosted data isn't published yet, or the data URL in Options is wrong. That's fine - bundled data is current until next quarter. |
 | Rates look outdated after a quarter change | Options → "Check for data update now". If the host 404s, rebuild + upload from `tax-data-pipeline`, or re-zip the extension with a fresh `data/ohio-tax-data.json`. |
-| A suggested label doesn't match a group in Jobber | Options → edit that combo's label to the exact Jobber group name (must match QuickBooks byte-for-byte — see JOBBER-TAX-CLEANUP.md). |
+| A suggested label doesn't match a group in Jobber | Options → edit that combo's label to the exact Jobber group name (must match QuickBooks byte-for-byte - see JOBBER-TAX-CLEANUP.md). |
 
 ## Privacy / permissions
 

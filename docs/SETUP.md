@@ -1,6 +1,6 @@
 # Operator setup runbook
 
-One-time deployment steps for this stack. After these, nothing needs manual quarterly attention — see "How it stays current" at the bottom.
+One-time deployment steps for this stack. After these, nothing needs manual quarterly attention; see "How it stays current" at the bottom.
 
 ## 1. Publish the repo
 
@@ -19,7 +19,7 @@ One-time deployment steps for this stack. After these, nothing needs manual quar
 
 1. Cloud Console → **Cloud Run** → the tax service → **Edit repo settings** (or "Set up continuous deployment").
 2. Connect `steambrite-tax` (grant the Cloud Build GitHub App access to it if it isn't listed), branch `main`.
-3. Build type: **Google Cloud buildpacks** · **Build context directory: `/backend`** — that field is the critical one.
+3. Build type: **Google Cloud buildpacks**. Then set **Build context directory: `/backend`** (this is the critical field).
 4. Save. The first build deploys immediately; afterwards every push to `main` auto-deploys.
 
 Optional env vars on the service:
@@ -33,7 +33,7 @@ Optional env vars on the service:
 ## 4. Extension rollout (side-loaded team)
 
 1. Each user: `chrome://extensions` → Developer mode → **Load unpacked** → the `extension/` folder (or unzip the distributed archive to a permanent folder first).
-2. No configuration needed — the Pages data URLs are the extension's built-in defaults (since v2.0.2), and data self-updates every ~3 days via `chrome.alarms`. The Options page can override the data/shard/backend URLs and the Jobber tax-group label mapping.
+2. No configuration needed: the Pages data URLs are the extension's built-in defaults (since v2.0.2), and data self-updates every ~3 days via `chrome.alarms`. The Options page can override the data/shard/backend URLs and the Jobber tax-group label mapping.
 3. Code updates require redistributing the folder/zip (side-loaded extensions don't auto-update). Consider a $5 unlisted Chrome Web Store listing if that ever gets old.
 
 ## How it stays current

@@ -1,4 +1,4 @@
-# TESTING — results and procedures
+# TESTING - results and procedures
 
 Both suites run with **plain `node`** (no npm dependencies). The resolver suite
 runs against the REAL bundled data file (`data/ohio-tax-data.json`, version
@@ -11,13 +11,13 @@ node tests/scanner.test.js     -> 71 passed, 0 failed
 ```
 
 > 2026-07-11 update (v2.0.2): resolver suite grew from 47 to 63 with section 11
-> — the live "6000 S Sunbury Rd, Westerville 43082" regression (see section 7
+> - the live "6000 S Sunbury Rd, Westerville 43082" regression (see section 7
 > below). Sections 1–10 output is unchanged from the run recorded here.
 
-## 1. tests/resolver.test.js — ACTUAL OUTPUT (47/47 pass)
+## 1. tests/resolver.test.js - ACTUAL OUTPUT (47/47 pass)
 
 ```
-resolver.test.js — data version 2026Q1, stateRate 0.0575
+resolver.test.js - data version 2026Q1, stateRate 0.0575
 
 == 1. 43215 (Columbus) -> Franklin + COTA 8.00% exact via zip5 ==
   PASS  status resolved
@@ -91,20 +91,20 @@ TOTAL: 47 passed, 0 failed
 ```
 
 Notes on the required assertions:
-- **43215 → Franklin+COTA 8.00% exact** — pass (data: `{"c":"049","t":"25000"}`).
-- **45040 → Warren 6.75% exact, "OH-Warren"** — pass (data: `{"c":"165","t":null}`).
-- **43082 ambiguous → default `d` + verify** when no +4/shard/census — pass
+- **43215 → Franklin+COTA 8.00% exact** - pass (data: `{"c":"049","t":"25000"}`).
+- **45040 → Warren 6.75% exact, "OH-Warren"** - pass (data: `{"c":"165","t":null}`).
+- **43082 ambiguous → default `d` + verify** when no +4/shard/census - pass
   (default = Delaware no-transit 7.00%; candidates: Delaware 7.00 /
   Delaware+COTA 8.00 / Franklin+COTA 8.00).
-- **43082 with +4 in a zip4 range → that combo** — pass; the test reads the
+- **43082 with +4 in a zip4 range → that combo** - pass; the test reads the
   first REAL range from the data (`lo:1 hi:6 → c:041 t:96000`, i.e.
   Delaware+COTA 8.00%) and asserts the resolver returns exactly it.
-- **43068 candidates include Franklin+COTA 8.00% and Licking+COTA 8.25%** — pass.
-- **Total-rate math matches `jobberCombos` totals for every combo** — pass,
+- **43068 candidates include Franklin+COTA 8.00% and Licking+COTA 8.25%** - pass.
+- **Total-rate math matches `jobberCombos` totals for every combo** - pass,
   all 93 combos, tolerance 1e-9 plus display-string equality (this also covers
   the data's float artifacts, e.g. Licking `0.07250000000000001` → "7.25").
 
-## 2. tests/scanner.test.js — ACTUAL OUTPUT (71/71 pass)
+## 2. tests/scanner.test.js - ACTUAL OUTPUT (71/71 pass)
 
 Sections 1–6 = original coverage (Rails-attr classification, prefix grouping,
 Frankenstein-merge prevention, placeholder selects, multi-line block parsing,
@@ -145,8 +145,8 @@ testing (exact attributes captured from secure.getjobber.com on 2026-07-11).
   PASS  ('', 'Select state') -> placeholder
   PASS  ('--', '--') -> placeholder
   PASS  ('', 'Please choose') -> placeholder
-  PASS  ('', 'Choose a state…') -> placeholder
-  PASS  ('select', 'Select…') -> placeholder
+  PASS  ('', 'Choose a state...') -> placeholder
+  PASS  ('select', 'Select...') -> placeholder
   PASS  ('OH', 'Ohio') -> real value
   PASS  ('', 'Ohio') (empty value, real text) -> real value
 
@@ -219,13 +219,13 @@ NO addresses; both are fixed and regression-tested (sections 7–9 above):
    no-overwrite grouping then assembles the modal while multi-field prefixes
    (Rails billing/property sets) still group separately.
 2. **Single-line read-only addresses**: the client screen shows the property
-   address as ONE line — `<a href="/clients/…"><h5>4330 Marival Way, Mason,
+   address as ONE line - `<a href="/clients/..."><h5>4330 Marival Way, Mason,
    Ohio 45040</h5></a>`. `parseAddressBlock` previously required 2+ lines. Fix:
    single-line comma parsing (last segment = "State ZIP" incl. full state
    names; segment before = city; the rest = street, must start with a house
    number), plus a per-line fallback inside multi-line blocks. The content
    script's text-block walk now also visits `a`/`h1–h6` elements, and badges
-   are inserted AFTER the row container as a sibling — never inside the `<a>`.
+   are inserted AFTER the row container as a sibling - never inside the `<a>`.
 3. **Decoy dialog**: the FIRST `[role=dialog]` in Jobber's DOM is a hidden
    decoy (`opacity-0 pointer-events-none`, zero inputs, NOT display:none).
    No code path uses a global first-match dialog query (checked by test 9);
@@ -260,14 +260,14 @@ Steps (one-time, ~3 minutes):
 2. Temporarily add `"http://localhost:8901/*"` to `content_scripts[0].matches`
    AND `host_permissions` in `manifest.json`; reload the extension at
    `chrome://extensions`. (Revert afterwards.)
-3. Open `http://localhost:8901/`. Expected within ~2s — EXACTLY 6 badges:
+3. Open `http://localhost:8901/`. Expected within ~2s - EXACTLY 6 badges:
    - Columbus 43215 (billing form) → `OH-Franklin 8.00%`, badge after the
      "Tax group" select's wrapper;
    - Mason 45040 "456 Reading Rd" (property form) → `OH-Warren 6.75%`;
    - Springboro 45066 (single-line `<a><h5>` row) → verify badge (Warren
      default 6.75% vs Montgomery+MVRTA 7.50% candidates), placed AFTER the
      row container, NOT inside the link;
-   - Mason 45040 "4330 Marival Way" (React modal) → `OH-Warren 6.75%` —
+   - Mason 45040 "4330 Marival Way" (React modal) → `OH-Warren 6.75%` -
      proves the generatedName grouping fix;
    - Westerville 43082 (read-only `<dl>`) → verify badge, 7.00% default +
      Finder link (or 8.00% exact if Census/shard resolves it);
@@ -275,7 +275,7 @@ Steps (one-time, ~3 minutes):
    And NO badge for: the decoy dialog, the hidden (display:none) modal
    (43004), the empty "New property" form, the duplicate "456 Reading Road"
    card (deduped).
-4. Click "Simulate SPA modal open…": one new badge (Dayton 45402,
+4. Click "Simulate SPA modal open...": one new badge (Dayton 45402,
    `OH-Montgomery-57000 7.50%`) appears ~1.8s later (debounced rescan) with no
    badge flicker loops (observer ignores its own insertions).
 5. Popup: shows the same cards with confidence chips + data footer
@@ -289,7 +289,7 @@ real client page (Marival Way property) is the next Phase-D gate.
 
 ## 6. Known gaps / waiting on hosting
 
-- ~~`addr-shards/` per-ZIP files are not hosted yet~~ — RESOLVED: GitHub Pages
+- ~~`addr-shards/` per-ZIP files are not hosted yet~~ - RESOLVED: GitHub Pages
   (`jefe2332.github.io/steambrite-tax`) hosts data + shards and is the default
   since v2.0.2; the workflow republishes on any push touching `pipeline/**`.
   The code still treats 404/network-fail as "shard unavailable" (falls through
@@ -303,11 +303,11 @@ real client page (Marival Way property) is the next Phase-D gate.
 
 Live backend verification found: POST /api/lookup for
 "6000 S Sunbury Rd, Westerville, OH 43082" returned **Franklin+COTA 8.00%
-"high"** — wrong. State boundary A-records put SUNBURY RD in 43082 in county
+"high"** - wrong. State boundary A-records put SUNBURY RD in 43082 in county
 041 (Delaware), no transit → **7.00%**. Two compounding causes:
 
 1. street-name miss: the state file stores "SUNBURY RD" (no directional),
-   input said "S Sunbury Rd" — the exact-match compare failed;
+   input said "S Sunbury Rd" - the exact-match compare failed;
 2. house number 6000 exists in no range (nonexistent address), so the resolver
    fell to Census, which fuzzy-snapped onto a Franklin-side street (matched
    ZIP 43081) and confidently returned county 049.
@@ -320,7 +320,7 @@ Fixes (resolver test section 11 locks all of them in):
 - shards now carry `streets` (full street directory of the ZIP): street in
   `streets` with no override row → ZIP default combo, **exact**
   (method `addr-default`); street not in `streets` → Census allowed, BUT its
-  matched address must be in the SAME ZIP5 — on mismatch the resolver returns
+  matched address must be in the SAME ZIP5 - on mismatch the resolver returns
   the ZIP default with **verify** instead of trusting the snapped county;
 - old-format shards (no `streets`) keep the previous behavior.
 
@@ -333,9 +333,9 @@ POST /api/lookup {"address":{"street":"6000 S Sunbury Rd","city":"Westerville","
     "city":{"name":"Westerville","rate":0},"districts":[],"totalRate":0.07,
     "locationName":"Westerville, OH 43082", ..., "confidence":"exact"}   ✔ was Franklin 8.00% "high"
 
-POST … "305 S Sunbury Rd" (odd, inside override range 301-335)
+POST ... "305 S Sunbury Rd" (odd, inside override range 301-335)
 -> Delaware + COTA district, totalRate 0.08, confidence "exact"          ✔ directional-stripped range match
 
-POST … "123 S High St, Columbus 43215"  -> Franklin + COTA 0.08 "exact"  ✔ control unchanged
-POST … "456 Reading Rd, Mason 45040"    -> Warren 0.0675 "exact"         ✔ control unchanged
+POST ... "123 S High St, Columbus 43215"  -> Franklin + COTA 0.08 "exact"  ✔ control unchanged
+POST ... "456 Reading Rd, Mason 45040"    -> Warren 0.0675 "exact"         ✔ control unchanged
 ```
