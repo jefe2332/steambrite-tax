@@ -1,0 +1,84 @@
+.tax-ext-badge {
+  display: block;
+  width: fit-content;
+  max-width: 420px;
+  margin: 6px 0;
+  padding: 8px 12px;
+  background-color: #ffffff;
+  color: #1f2937;
+  border: 1px solid #e5e7eb;
+  border-left: 3px solid #10b981;
+  border-radius: 6px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  pointer-events: none; /* read-only; links re-enable below */
+  clear: both;
+  text-align: left;
+  line-height: 1.35;
+}
+
+.tax-ext-badge--verify {
+  border-left-color: #f59e0b;
+  background-color: #fffbeb;
+}
+
+.tax-ext-badge--estimate {
+  border-left-color: #6366f1;
+}
+
+.tax-ext-badge--error {
+  border-left-color: #ef4444;
+  background-color: #fef2f2;
+}
+
+.tax-ext-badge-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #6b7280;
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+
+.tax-ext-badge-main {
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+
+.tax-ext-badge-rate {
+  color: #059669;
+}
+
+.tax-ext-badge--verify .tax-ext-badge-rate {
+  color: #b45309;
+}
+
+.tax-ext-badge-sub {
+  font-size: 11.5px;
+  margin-top: 4px;
+  color: #4b5563;
+  line-height: 1.4;
+}
+
+.tax-ext-badge-warn {
+  font-size: 11.5px;
+  margin-top: 5px;
+  color: #92400e;
+  font-weight: 600;
+}
+
+.tax-ext-badge-warn a {
+  pointer-events: auto; /* the one interactive part of the badge */
+  color: #1d4ed8;
+  text-decoration: underline;
+  font-weight: 600;
+}
+
+.tax-ext-badge-warn a:hover {
+  color: #1e40af;
+}

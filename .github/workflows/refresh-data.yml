@@ -1,0 +1,66 @@
+name: Refresh Ohio tax data
+
+# Rebuilds the Ohio tax data from the state's "The Finder" files and publishes
+# it via GitHub Pages. Runs automatically at the start of each calendar quarter
+# (Ohio only changes rates on quarter boundaries), on demand, and whenever the
+# pipeline code changes on main.
+on:
+  schedule:
+    # 13:17 UTC on the 2nd day of Jan / Apr / Jul / Oct (a day after each
+    # quarter starts, so the new quarter's files are live and effective).
+    - cron: '17 13 2 1,4,7,10 *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'pipeline/**'
+
+# Least-privilege token, plus what actions/deploy-pages needs.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never run two Pages deployments at once; let an in-flight one finish.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Build Ohio tax data (fresh download from The Finder)
+        run: node pipeline/build.js --fresh
+
+      - name: Assemble Pages site
+        run: |
+          rm -rf _site
+          mkdir -p _site/addr-shards
+          cp pipeline/dist/ohio-tax-data.min.json _site/ohio-tax-data.min.json
+          cp -r pipeline/dist/addr-shards/. _site/addr-shards/
+          # Serve files verbatim (no Jekyll processing of the JSON/underscore paths).
+          touch _site/.nojekyll
+          echo "Assembled _site:"
+          ls -la _site
+          echo "Shard count: $(ls _site/addr-shards | wc -l)"
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,4 @@
+{
+  "//": "These resolver/normalize modules are shared VERBATIM with the Chrome extension and are authored as UMD/CommonJS. The backend package is an ES module (\"type\":\"module\"), so this nested package.json scopes just this directory back to CommonJS. That lets their `module.exports` branch run and lets createRequire() load them.",
+  "type": "commonjs"
+}

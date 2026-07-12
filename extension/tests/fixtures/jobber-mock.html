@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Jobber mock — client page fixture</title>
+  <style>
+    body { font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif; background: #f5f6f7; margin: 0; padding: 24px; color: #202429; }
+    .layout { max-width: 900px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+    .card { background: #fff; border: 1px solid #dfe3e8; border-radius: 8px; padding: 20px; }
+    h1 { font-size: 22px; margin: 0; }
+    h2 { font-size: 15px; margin: 0 0 12px; }
+    .field { margin-bottom: 12px; display: flex; flex-direction: column; max-width: 320px; }
+    .field label { font-size: 12px; font-weight: 600; margin-bottom: 4px; color: #444; }
+    .field input, .field select { padding: 7px 10px; border: 1px solid #c4cdd5; border-radius: 4px; font-size: 14px; }
+    .cols { display: flex; gap: 16px; flex-wrap: wrap; }
+    dl { display: grid; grid-template-columns: 120px 1fr; row-gap: 6px; margin: 0; font-size: 14px; }
+    dt { color: #637381; }
+    dd { margin: 0; }
+    .hidden-modal { display: none; }
+    .plain-address { font-size: 14px; line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <!-- DECOY dialog: real Jobber keeps this as the FIRST [role=dialog] in the
+       DOM — opacity-0 + pointer-events-none, NOT display:none, zero inputs.
+       Nothing may treat it as "the modal"; opacity-aware visibility must skip
+       anything that ever appears inside it. -->
+  <div role="dialog" class="pointer-events-none absolute top-0 opacity-0"
+       style="position:absolute;top:0;opacity:0;pointer-events:none;">
+    <p>decoy dialog — must be ignored</p>
+  </div>
+
+  <div class="layout">
+    <h1>Edit client — Steambrite mock</h1>
+
+    <!-- Real-Jobber-style READ-ONLY property row: single-line address inside
+         <a><h5>, obfuscated/utility row classes. Badge must land AFTER the
+         row container, never inside the link. -->
+    <div class="card">
+      <h2>Properties</h2>
+      <div class="-mx-base flex border-t j4h-0Mxa5gk-">
+        <div class="flex min-h-[56px] flex-grow items-stretch">
+          <a href="/clients/123/properties/456"><h5>55 Curie Cir, Springboro, Ohio 45066</h5></a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Real-Jobber-style EDIT PROPERTY modal (React): every input has a
+         useless unique generatedName--_r_X_ name/id; the ONLY signal is
+         <label for>. State is an INPUT, not a select. Includes the
+         Property name / Country / Search tax rate distractors. -->
+    <div role="dialog" class="card" id="editPropertyModal">
+      <h2>Edit property</h2>
+      <div class="field">
+        <label for="_r_4b_">Property name</label>
+        <input type="text" id="_r_4b_" name="generatedName--_r_4b_" value="Main house">
+      </div>
+      <div class="field">
+        <label for="_r_5f_">Street 1</label>
+        <input type="text" id="_r_5f_" name="generatedName--_r_5f_" value="4330 Marival Way">
+      </div>
+      <div class="field">
+        <label for="_r_4f_">Street 2</label>
+        <input type="text" id="_r_4f_" name="generatedName--_r_4f_" value="">
+      </div>
+      <div class="field">
+        <label for="_r_4h_">City</label>
+        <input type="text" id="_r_4h_" name="generatedName--_r_4h_" value="Mason">
+      </div>
+      <div class="field">
+        <label for="_r_4j_">State</label>
+        <input type="text" id="_r_4j_" name="generatedName--_r_4j_" value="Ohio">
+      </div>
+      <div class="field">
+        <label for="_r_4l_">ZIP code</label>
+        <input type="text" id="_r_4l_" name="generatedName--_r_4l_" value="45040">
+      </div>
+      <div class="field">
+        <label for="_r_4n_">Country</label>
+        <select id="_r_4n_" name="generatedName--_r_4n_">
+          <option value="US" selected>United States</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="_r_4p_">Search tax rate</label>
+        <input type="text" id="_r_4p_" name="generatedName--_r_4p_" value="">
+      </div>
+    </div>
+
+    <!-- ONE form containing BOTH billing and property address blocks (the v1
+         Frankenstein-merge trap). Rails-style bracketed names + one
+         underscore-style id thrown in. -->
+    <form action="#" class="card" id="clientForm">
+      <h2>Billing address</h2>
+      <div class="cols">
+        <div class="field">
+          <label for="client_billing_address_street1">Street 1</label>
+          <input type="text" id="client_billing_address_street1" name="client[billing_address][street1]" value="123 S High St">
+        </div>
+        <div class="field">
+          <label for="client_billing_address_street2">Street 2</label>
+          <input type="text" id="client_billing_address_street2" name="client[billing_address][street2]" value="">
+        </div>
+        <div class="field">
+          <label for="client_billing_address_city">City</label>
+          <input type="text" id="client_billing_address_city" name="client[billing_address][city]" value="Columbus">
+        </div>
+        <div class="field">
+          <!-- underscore-style id, word-boundary regexes fail here -->
+          <label for="billing_address_state">State</label>
+          <select id="billing_address_state" name="client[billing_address][state]">
+            <option value="">Select state</option>
+            <option value="KY">Kentucky</option>
+            <option value="OH" selected>Ohio</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="client_billing_address_postal_code">ZIP code</label>
+          <input type="text" id="client_billing_address_postal_code" name="client[billing_address][postal_code]" value="43215">
+        </div>
+      </div>
+
+      <h2>Property address</h2>
+      <div class="cols">
+        <div class="field">
+          <label for="property_address_street1">Street 1</label>
+          <input type="text" id="property_address_street1" name="property[address][street1]" value="456 Reading Rd">
+        </div>
+        <div class="field">
+          <label for="property_address_city">City</label>
+          <input type="text" id="property_address_city" name="property[address][city]" value="Mason">
+        </div>
+        <div class="field">
+          <label for="property_address_state">State</label>
+          <select id="property_address_state" name="property[address][state]">
+            <option value="">Select state</option>
+            <option value="OH" selected>Ohio</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="property_address_zip">ZIP code</label>
+          <input type="text" id="property_address_zip" name="property[address][zip]" value="45040">
+        </div>
+      </div>
+
+      <h2>Tax</h2>
+      <div class="field">
+        <label for="quote_tax_rate_id">Tax group</label>
+        <select id="quote_tax_rate_id" name="quote[tax_rate_id]">
+          <option value="">Select tax rate</option>
+          <option value="1">OH-Franklin (8.0%)</option>
+          <option value="2">OH-Warren (7.0%)</option>
+        </select>
+      </div>
+    </form>
+
+    <!-- Read-only property card: label/value pairs (strategy 2). -->
+    <div class="card property-section">
+      <h2>Property details</h2>
+      <dl>
+        <dt>Street 1</dt><dd>789 Polaris Pkwy</dd>
+        <dt>City</dt><dd>Westerville</dd>
+        <dt>State</dt><dd>Ohio</dd>
+        <dt>Zip code</dt><dd>43082</dd>
+      </dl>
+    </div>
+
+    <!-- Plain-text address block with a leading client-name line (strategy 3;
+         v1 wrongly prepended "Jane Doe" to the street). -->
+    <div class="card">
+      <h2>Recent job</h2>
+      <div class="plain-address">
+        Jane Doe<br>
+        10 Main St<br>
+        Reynoldsburg, OH 43068
+      </div>
+    </div>
+
+    <!-- Placeholder-only select: must NOT contribute a state value. -->
+    <div class="card">
+      <h2>New property (empty form)</h2>
+      <div class="field">
+        <label for="new_property_state">State</label>
+        <select id="new_property_state" name="new_property[address][state]">
+          <option value="">Select state</option>
+          <option value="OH">Ohio</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="new_property_zip">ZIP code</label>
+        <input type="text" id="new_property_zip" name="new_property[address][zip]" value="">
+      </div>
+    </div>
+
+    <!-- Hidden modal with a complete address: must be SKIPPED (fix #5). -->
+    <div class="hidden-modal" role="dialog" aria-hidden="true" id="hiddenEditModal">
+      <div class="field">
+        <label for="modal_street1">Street 1</label>
+        <input type="text" id="modal_street1" name="modal[address][street1]" value="999 Should Not Appear Blvd">
+      </div>
+      <div class="field">
+        <label for="modal_city">City</label>
+        <input type="text" id="modal_city" name="modal[address][city]" value="Nowhere">
+      </div>
+      <div class="field">
+        <label for="modal_state">State</label>
+        <input type="text" id="modal_state" name="modal[address][state]" value="OH">
+      </div>
+      <div class="field">
+        <label for="modal_zip">ZIP</label>
+        <input type="text" id="modal_zip" name="modal[address][zip]" value="43004">
+      </div>
+    </div>
+
+    <!-- Duplicate of the property address in a different format: dedup check
+         (fix #6 — "456 Reading Road" == "456 Reading Rd", Ohio == OH). -->
+    <div class="card">
+      <h2>Service address (duplicate, different formatting)</h2>
+      <div class="plain-address">
+        456 Reading Road<br>
+        Mason, Ohio 45040
+      </div>
+    </div>
+  </div>
+
+  <!-- SPA-mutation simulator for manual MutationObserver testing -->
+  <script>
+    setTimeout(function () {
+      var btn = document.createElement('button');
+      btn.textContent = 'Simulate SPA modal open (adds address after 1s)';
+      btn.style.cssText = 'margin:0 auto;display:block;padding:8px 14px;';
+      btn.addEventListener('click', function () {
+        setTimeout(function () {
+          var card = document.createElement('div');
+          card.className = 'card';
+          var h = document.createElement('h2');
+          h.textContent = 'Dynamically added property';
+          var p = document.createElement('div');
+          p.className = 'plain-address';
+          p.appendChild(document.createTextNode('77 Elm Dr'));
+          p.appendChild(document.createElement('br'));
+          p.appendChild(document.createTextNode('Dayton, OH 45402'));
+          card.appendChild(h);
+          card.appendChild(p);
+          document.querySelector('.layout').appendChild(card);
+        }, 1000);
+      });
+      document.querySelector('.layout').appendChild(btn);
+    }, 0);
+  </script>
+</body>
+</html>

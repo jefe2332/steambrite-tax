@@ -1,0 +1,8 @@
+{
+  "name": "Sales Tax Calculator V2",
+  "description": "A high-precision sales tax lookup tool that uses AI and real-time search grounding to find exact state, county, and local tax rates for any US address.",
+  "requestFramePermissions": [
+    "geolocation"
+  ],
+  "last_sync_attempt": "2026-03-09T11:15:00Z"
+}

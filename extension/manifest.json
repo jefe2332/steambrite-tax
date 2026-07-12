@@ -1,0 +1,50 @@
+{
+  "manifest_version": 3,
+  "name": "Jobber Tax Calculator Extension",
+  "version": "2.0.1",
+  "description": "Suggests the exact Ohio sales-tax jurisdiction (county + transit district) and the matching Jobber tax group for addresses on Jobber pages. Powered by bundled official Ohio Dept. of Taxation (The Finder) data.",
+  "permissions": [
+    "storage",
+    "alarms",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "https://secure.getjobber.com/*",
+    "https://geocoding.geo.census.gov/*",
+    "https://geo.fcc.gov/*",
+    "https://storage.googleapis.com/*",
+    "https://*.github.io/*",
+    "https://tax.steambrite.us/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; img-src 'self' https://storage.googleapis.com data:; media-src 'self' https://storage.googleapis.com data:;"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Jobber Tax Calculator",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "options_page": "options.html",
+  "content_scripts": [
+    {
+      "matches": ["https://secure.getjobber.com/*"],
+      "css": ["content.css"],
+      "js": ["lib/normalize.js", "lib/scan-core.js", "content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

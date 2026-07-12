@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Jobber Tax Suggester — Options</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <div class="page">
+    <h1>Jobber Tax Suggester — Options</h1>
+
+    <section class="card">
+      <h2>Data status</h2>
+      <div id="dataStatus" class="data-status">Loading…</div>
+      <div class="actions">
+        <button id="checkUpdateBtn" class="primary-btn">Check for data update now</button>
+        <span id="checkResult" class="status-msg"></span>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Endpoints</h2>
+      <p class="hint">Leave defaults unless hosting moves. Data + shard hosting may not exist yet — the extension falls back to bundled data silently.</p>
+      <label for="dataUrl">Data file URL (ohio-tax-data.min.json)</label>
+      <input type="text" id="dataUrl" placeholder="https://storage.googleapis.com/tax-rate-calculator-assets/ohio-tax-data.min.json">
+      <label for="shardBaseUrl">Address-shard base URL (per-ZIP street overrides)</label>
+      <input type="text" id="shardBaseUrl" placeholder="https://storage.googleapis.com/tax-rate-calculator-assets/addr-shards">
+      <label for="backendUrl">Legacy backend URL (last-resort estimates)</label>
+      <input type="text" id="backendUrl" placeholder="https://tax.steambrite.us">
+      <div class="actions">
+        <button id="saveConfigBtn" class="primary-btn">Save endpoints</button>
+        <span id="configStatus" class="status-msg"></span>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Jobber tax-group labels</h2>
+      <p class="hint">
+        Each Ohio jurisdiction (county + optional transit district) maps to the Jobber tax-group
+        name the badge suggests. Built-in defaults match Steambrite's current Jobber groups.
+        Type an override to change one; clear the box to go back to the default.
+        Rows marked "unmapped" show the data file's suggested name — add that group in Jobber
+        (or map it here) if you serve that area.
+      </p>
+      <div class="table-wrap">
+        <table id="labelTable">
+          <thead>
+            <tr>
+              <th>County</th>
+              <th>Transit</th>
+              <th>Rate</th>
+              <th>Default label</th>
+              <th>Override</th>
+            </tr>
+          </thead>
+          <tbody id="labelTableBody"></tbody>
+        </table>
+      </div>
+      <div class="actions">
+        <button id="saveLabelsBtn" class="primary-btn">Save label mappings</button>
+        <button id="resetLabelsBtn" class="secondary-btn">Clear all overrides</button>
+        <span id="labelStatus" class="status-msg"></span>
+      </div>
+    </section>
+  </div>
+  <script src="options.js"></script>
+</body>
+</html>
