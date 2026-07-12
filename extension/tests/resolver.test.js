@@ -263,6 +263,130 @@ async function main() {
   }
 
   /* ---------------------------------------------------------------- */
+  section('11. REGRESSION (live Sunbury Rd bug): shard street directory + Census fuzzy-snap guard');
+  {
+    // Shard in the NEW format: `streets` = every street in the ZIP's raw
+    // A-records (default rows included); `addr` = override rows only.
+    // Ground truth (state boundary file): SUNBURY RD in 43082 is county 041
+    // (Delaware), no transit -> 7.00% — it is the ZIP default, so it has NO
+    // override rows. 43081-side SUNBURY RD segments exist as an override
+    // sample to prove the directional-stripped RANGE matching too.
+    const shardNew = {
+      zip: '43082', v: data.meta.version,
+      streets: ['ABBEYCROSS LN', 'SUNBURY RD'],
+      addr: [
+        { street: 'ABBEYCROSS LN', lo: 1, hi: 67, oddEven: 'O', c: '041', t: '96000' },
+        { street: 'SUNBURY RD', lo: 7001, hi: 7099, oddEven: 'B', c: '041', t: '96000' }
+      ]
+    };
+    const depsShard = makeDeps({ getShard: async (z) => (z === '43082' ? shardNew : null) });
+
+    // (a) THE live bug: "6000 S Sunbury Rd" — number in no override range, but
+    // the street IS in the directory -> ZIP default (Delaware 7.00%), EXACT.
+    // Previously: fell through to Census, which fuzzy-snapped to a
+    // Franklin-side street -> WRONG Franklin+COTA 8.00% "high".
+    const r1 = await R.createResolver(depsShard).resolve(
+      { street: '6000 S Sunbury Rd', city: 'Westerville', state: 'OH', zip: '43082' });
+    check('street in `streets` but no override -> ZIP default combo',
+      r1.county && r1.county.name === 'Delaware' && !r1.transit,
+      JSON.stringify({ county: r1.county && r1.county.name, transit: r1.transit }));
+    check('  -> 7.00% (NOT Franklin 8.00%)', r1.totalPct === '7.00', r1.totalPct);
+    check('  -> confidence exact, method addr-default (lossless override-only shards)',
+      r1.confidence === 'exact' && r1.method === 'addr-default', r1.confidence + '/' + r1.method);
+    check('  -> label OH-Delaware', r1.label === 'OH-Delaware', r1.label);
+    check('  -> census never consulted (no census attempt logged)',
+      !(r1.attempts || []).some(a => a.stage === 'census'), JSON.stringify(r1.attempts));
+
+    // (b) directional-stripped matching also works for OVERRIDE RANGES:
+    // input "S Sunbury Rd" vs state-file street "SUNBURY RD" (no directional).
+    const r2 = await R.createResolver(depsShard).resolve(
+      { street: '7050 S Sunbury Rd', city: 'Westerville', state: 'OH', zip: '43082' });
+    check('directional-stripped override-range match ("S Sunbury Rd" vs "SUNBURY RD")',
+      r2.confidence === 'exact' && r2.method === 'addr', r2.confidence + '/' + r2.method);
+    check('  -> Delaware + COTA 8.00% from the override row',
+      r2.county.name === 'Delaware' && r2.transit && r2.transit.name === 'COTA' && r2.totalPct === '8.00',
+      r2.county.name + '/' + (r2.transit && r2.transit.name) + '/' + r2.totalPct);
+
+    // helper-level sanity for the directional stripper
+    check("stripDirectionals('S SUNBURY RD') === 'SUNBURY RD'",
+      N.stripDirectionals('S SUNBURY RD') === 'SUNBURY RD', N.stripDirectionals('S SUNBURY RD'));
+    check("stripDirectionals('MAIN ST W') === 'MAIN ST'",
+      N.stripDirectionals('MAIN ST W') === 'MAIN ST', N.stripDirectionals('MAIN ST W'));
+
+    // (c) UNKNOWN street + Census matched a DIFFERENT ZIP (fuzzy snap):
+    // county must NOT be trusted -> ZIP default + verify.
+    const censusSnapped = {
+      result: {
+        addressMatches: [{
+          matchedAddress: '6011 SUNBURY RD, COLUMBUS, OH, 43081',
+          addressComponents: { zip: '43081' },
+          coordinates: { x: -82.93, y: 40.09 },
+          geographies: { Counties: [{ STATE: '39', COUNTY: '049', BASENAME: 'Franklin' }] }
+        }]
+      }
+    };
+    const depsSnap = makeDeps({
+      getShard: async () => shardNew,
+      fetchJson: async (url) => {
+        if (url.includes('geocoding.geo.census.gov')) return censusSnapped;
+        const e = new Error('stub'); e.cause = 'offline'; throw e;
+      }
+    });
+    const r3 = await R.createResolver(depsSnap).resolve(
+      { street: '6000 Nonexistent Blvd', city: 'Westerville', state: 'OH', zip: '43082' });
+    check('unknown street + Census ZIP mismatch -> ZIP default, NOT Census county',
+      r3.county.name === 'Delaware' && !r3.transit && r3.totalPct === '7.00',
+      JSON.stringify({ county: r3.county && r3.county.name, pct: r3.totalPct }));
+    check('  -> confidence verify, method zip-default',
+      r3.confidence === 'verify' && r3.method === 'zip-default', r3.confidence + '/' + r3.method);
+    check('  -> attempts record the zip-mismatch cause',
+      (r3.attempts || []).some(a => a.stage === 'census' && a.cause === 'zip-mismatch'),
+      JSON.stringify(r3.attempts));
+    check('  -> street-unknown recorded from the shard directory',
+      (r3.attempts || []).some(a => a.stage === 'addr-shard' && a.cause === 'street-unknown'),
+      JSON.stringify(r3.attempts));
+
+    // (d) UNKNOWN street but Census matched WITHIN the input ZIP -> its county
+    // is still trusted (guard passes; normal filtering applies).
+    const censusSameZip = {
+      result: {
+        addressMatches: [{
+          matchedAddress: '921 SOME ST, WESTERVILLE, OH, 43082',
+          addressComponents: { zip: '43082' },
+          coordinates: { x: -82.93, y: 40.11 },
+          geographies: { Counties: [{ STATE: '39', COUNTY: '049', BASENAME: 'Franklin' }] }
+        }]
+      }
+    };
+    const depsSame = makeDeps({
+      getShard: async () => shardNew,
+      fetchJson: async (url) => {
+        if (url.includes('geocoding.geo.census.gov')) return censusSameZip;
+        const e = new Error('stub'); e.cause = 'offline'; throw e;
+      }
+    });
+    const r4 = await R.createResolver(depsSame).resolve(
+      { street: '921 Some Unknown St', city: 'Westerville', state: 'OH', zip: '43082' });
+    check('unknown street + Census match IN-ZIP -> county trusted (Franklin+COTA high)',
+      r4.confidence === 'high' && r4.method === 'census' && r4.totalPct === '8.00',
+      r4.confidence + '/' + r4.method + '/' + r4.totalPct);
+
+    // (e) backward compat: OLD-format shard (no `streets`) keeps legacy
+    // behavior — no addr-default shortcut, censusless fallback to zip-default.
+    const shardOld = {
+      zip: '43082', v: data.meta.version,
+      addr: [{ street: 'ABBEYCROSS LN', lo: 1, hi: 67, oddEven: 'O', c: '041', t: '96000' }]
+    };
+    const r5 = await R.createResolver(makeDeps({ getShard: async () => shardOld })).resolve(
+      { street: '6000 S Sunbury Rd', city: 'Westerville', state: 'OH', zip: '43082' });
+    check('old-format shard (no streets) -> legacy path (zip-default verify, offline)',
+      r5.confidence === 'verify' && r5.method === 'zip-default', r5.confidence + '/' + r5.method);
+    check('  -> legacy no-match attempt logged (not street-unknown)',
+      (r5.attempts || []).some(a => a.stage === 'addr-shard' && a.cause === 'no-match'),
+      JSON.stringify(r5.attempts));
+  }
+
+  /* ---------------------------------------------------------------- */
   console.log('\n================================');
   console.log('TOTAL: ' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);

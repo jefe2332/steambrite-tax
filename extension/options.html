@@ -20,11 +20,11 @@
 
     <section class="card">
       <h2>Endpoints</h2>
-      <p class="hint">Leave defaults unless hosting moves. Data + shard hosting may not exist yet — the extension falls back to bundled data silently.</p>
+      <p class="hint">Leave defaults unless hosting moves. Primary host is GitHub Pages (published by the repo's data workflow); the GCS bucket is the manual fallback. If a host is unreachable the extension falls back to bundled data silently.</p>
       <label for="dataUrl">Data file URL (ohio-tax-data.min.json)</label>
-      <input type="text" id="dataUrl" placeholder="https://storage.googleapis.com/tax-rate-calculator-assets/ohio-tax-data.min.json">
+      <input type="text" id="dataUrl" placeholder="https://jefe2332.github.io/steambrite-tax/ohio-tax-data.min.json">
       <label for="shardBaseUrl">Address-shard base URL (per-ZIP street overrides)</label>
-      <input type="text" id="shardBaseUrl" placeholder="https://storage.googleapis.com/tax-rate-calculator-assets/addr-shards">
+      <input type="text" id="shardBaseUrl" placeholder="https://jefe2332.github.io/steambrite-tax/addr-shards">
       <label for="backendUrl">Legacy backend URL (last-resort estimates)</label>
       <input type="text" id="backendUrl" placeholder="https://tax.steambrite.us">
       <div class="actions">

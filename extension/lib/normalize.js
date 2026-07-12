@@ -118,6 +118,25 @@
     return tokens.join(' ');
   }
 
+  var DIR_ABBRS = { N: 1, S: 1, E: 1, W: 1, NE: 1, NW: 1, SE: 1, SW: 1 };
+
+  /**
+   * Strip leading/trailing directional tokens from an ALREADY-normalized
+   * street name (normalizeStreetName maps NORTH->N etc., so only the
+   * abbreviated forms need handling here).
+   * 'S SUNBURY RD' -> 'SUNBURY RD'; 'MAIN ST W' -> 'MAIN ST'.
+   * Used as the SECONDARY match attempt: the state boundary file stores names
+   * without directionals ("SUNBURY RD") while user input often carries them
+   * ("S Sunbury Rd"). Always try exact first, then stripped on both sides.
+   */
+  function stripDirectionals(name) {
+    if (!name) return '';
+    var tokens = String(name).split(' ').filter(Boolean);
+    while (tokens.length > 1 && DIR_ABBRS[tokens[0]]) tokens.shift();
+    while (tokens.length > 1 && DIR_ABBRS[tokens[tokens.length - 1]]) tokens.pop();
+    return tokens.join(' ');
+  }
+
   /**
    * Parse a full street line into house number + canonical street name.
    * '15 Abbeycross Lane' -> {number:15, name:'ABBEYCROSS LN'}
@@ -155,6 +174,7 @@
     normalizeState: normalizeState,
     parseZip: parseZip,
     normalizeStreetName: normalizeStreetName,
+    stripDirectionals: stripDirectionals,
     parseStreet: parseStreet,
     addressKey: addressKey,
     pctString: pctString

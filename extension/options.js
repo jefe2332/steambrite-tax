@@ -4,9 +4,11 @@
  */
 'use strict';
 
+// Keep in sync with DEFAULT_CONFIG in background.js. GitHub Pages is the
+// primary host; the GCS bucket remains a documented manual fallback.
 const DEFAULTS = {
-  dataUrl: 'https://storage.googleapis.com/tax-rate-calculator-assets/ohio-tax-data.min.json',
-  shardBaseUrl: 'https://storage.googleapis.com/tax-rate-calculator-assets/addr-shards',
+  dataUrl: 'https://jefe2332.github.io/steambrite-tax/ohio-tax-data.min.json',
+  shardBaseUrl: 'https://jefe2332.github.io/steambrite-tax/addr-shards',
   backendUrl: 'https://tax.steambrite.us'
 };
 

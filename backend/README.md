@@ -25,8 +25,8 @@ API. Deploys to Cloud Run (buildpacks: `npm run build` → `npm start`).
 |---|---|---|
 | `PORT` | `3000` | Cloud Run injects this (usually 8080). |
 | `NODE_ENV` | dev | `production` serves the built `dist/` SPA. |
-| `DATA_URL` | GCS bucket JSON | Where to fetch the compiled Ohio data. Point at your GitHub Pages URL after setup. |
-| `SHARD_BASE_URL` | GCS bucket `addr-shards` | Base URL for per-ZIP address shards. |
+| `DATA_URL` | GitHub Pages `ohio-tax-data.min.json` | Where to fetch the compiled Ohio data. Manual fallback: the GCS bucket (`storage.googleapis.com/tax-rate-calculator-assets/ohio-tax-data.min.json`). |
+| `SHARD_BASE_URL` | GitHub Pages `addr-shards` | Base URL for per-ZIP address shards. Manual fallback: the GCS bucket `addr-shards` path. |
 | `GEMINI_API_KEY` | _(unset)_ | Enables non-Ohio lookups. Ohio lookups never need it. |
 
 ## Run locally

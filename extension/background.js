@@ -8,9 +8,12 @@ importScripts('lib/normalize.js', 'lib/resolver.js');
 const N = self.TaxExtNormalize;
 const R = self.TaxExtResolver;
 
+// Data + shards are published to GitHub Pages by the repo's quarterly Action.
+// (Manual fallback if Pages is ever down: the GCS bucket
+// https://storage.googleapis.com/tax-rate-calculator-assets/… — see README.)
 const DEFAULT_CONFIG = {
-  dataUrl: 'https://storage.googleapis.com/tax-rate-calculator-assets/ohio-tax-data.min.json',
-  shardBaseUrl: 'https://storage.googleapis.com/tax-rate-calculator-assets/addr-shards',
+  dataUrl: 'https://jefe2332.github.io/steambrite-tax/ohio-tax-data.min.json',
+  shardBaseUrl: 'https://jefe2332.github.io/steambrite-tax/addr-shards',
   backendUrl: 'https://tax.steambrite.us'
 };
 
@@ -166,7 +169,7 @@ async function getShard(zip5, dataVersion) {
 
   const entry = cache[zip5];
   if (entry && entry.v === dataVersion) {
-    if (entry.addr) return { addr: entry.addr };
+    if (entry.addr) return { addr: entry.addr, streets: entry.streets || null };
     if (entry.notFound && Date.now() - entry.at < SHARD_NEG_TTL_MS) return null;
   }
 
@@ -175,7 +178,13 @@ async function getShard(zip5, dataVersion) {
   try {
     const j = await fetchJson(url);
     if (j && Array.isArray(j.addr)) {
-      record = { v: dataVersion, addr: j.addr, at: Date.now() };
+      // keep `streets` — the resolver uses the ZIP's street directory to
+      // answer known-street-no-override (default, exact) vs unknown street
+      record = {
+        v: dataVersion, addr: j.addr,
+        streets: Array.isArray(j.streets) ? j.streets : null,
+        at: Date.now()
+      };
     } else {
       record = { v: dataVersion, notFound: true, at: Date.now() };
     }
@@ -195,7 +204,7 @@ async function getShard(zip5, dataVersion) {
     await chrome.storage.local.set({ [cacheKey]: cache });
   } catch (e) { }
 
-  return record.addr ? { addr: record.addr } : null;
+  return record.addr ? { addr: record.addr, streets: record.streets || null } : null;
 }
 
 /* ----------------------------- resolver ------------------------------ */

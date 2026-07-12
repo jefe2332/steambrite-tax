@@ -21,12 +21,15 @@ const N = require("./lib/normalize.js");
  * Never crash on a fetch failure — log and keep whatever we already have.
  * ========================================================================= */
 
+// GitHub Pages is the primary data host (published by the repo's quarterly
+// Action); override via env. Manual fallback host if Pages is ever down:
+// https://storage.googleapis.com/tax-rate-calculator-assets/… (see README).
 const DATA_URL =
   process.env.DATA_URL ||
-  "https://storage.googleapis.com/tax-rate-calculator-assets/ohio-tax-data.min.json";
+  "https://jefe2332.github.io/steambrite-tax/ohio-tax-data.min.json";
 const SHARD_BASE_URL =
   process.env.SHARD_BASE_URL ||
-  "https://storage.googleapis.com/tax-rate-calculator-assets/addr-shards";
+  "https://jefe2332.github.io/steambrite-tax/addr-shards";
 const DATA_REFRESH_MS = 24 * 60 * 60 * 1000; // 24h
 
 const fetchJson = R.makeFetchJson(fetch, 8000);
@@ -101,7 +104,11 @@ async function getShard(zip5, dataVersion) {
   let result = null;
   try {
     const j = await fetchJson(url);
-    if (j && Array.isArray(j.addr)) result = { addr: j.addr };
+    if (j && Array.isArray(j.addr)) {
+      // pass `streets` through — the resolver uses the ZIP's street directory
+      // to answer known-street-no-override (default, exact) vs unknown street
+      result = { addr: j.addr, streets: Array.isArray(j.streets) ? j.streets : null };
+    }
   } catch (err) {
     // 404 = shard not hosted; network error = offline. Both -> unavailable.
     result = null;

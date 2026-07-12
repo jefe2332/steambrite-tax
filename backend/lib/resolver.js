@@ -8,9 +8,17 @@
  *   1. normalize; non-OH -> legacy backend estimate
  *   2. zip5 unambiguous            -> exact
  *   3. ambiguous + ZIP+4 range     -> exact
- *   4. ambiguous + addr shard      -> exact (street+number+odd/even match)
+ *   4. ambiguous + addr shard:
+ *        override range hit (exact-then-directional-stripped street match)
+ *                                   -> that combo, exact
+ *        street in shard `streets` directory but no override
+ *                                   -> ZIP default combo, exact (shards are
+ *                                      lossless override-only compactions)
+ *        street NOT in `streets`    -> Census, but its matched ZIP must equal
+ *                                      the input ZIP (fuzzy-snap guard)
  *   5. Census geocoder county FIPS -> filter candidates: one left -> high;
- *      several (transit split)     -> default combo -> verify
+ *      several (transit split)     -> default combo -> verify;
+ *      matched-ZIP mismatch        -> ZIP default combo -> verify
  *   6. FCC area API (lat/lon from Census), then legacy backend -> estimate
  *   fallback when everything is unreachable: ZIP default combo -> verify
  */
@@ -116,14 +124,26 @@
    * Match a parsed street ({number, name}) against addr-shard records
    * [{street, lo, hi, oddEven|oe, c, t}]. Case-insensitive, suffix-normalized
    * street compare; number in [lo,hi]; odd/even 'O'/'E'/'B' honored.
+   * Two passes: exact street name first, then with leading/trailing
+   * directionals stripped on BOTH sides — the state boundary file stores
+   * "SUNBURY RD" while input may say "S Sunbury Rd".
    */
   function matchShardStreet(records, parsed) {
     if (!records || !parsed) return null;
-    var want = parsed.name;
+    var hit = scanShardRecords(records, parsed, parsed.name, false);
+    if (hit) return hit;
+    var stripped = N.stripDirectionals(parsed.name);
+    if (stripped === parsed.name) return null; // nothing to strip; no second pass
+    return scanShardRecords(records, parsed, stripped, true);
+  }
+
+  function scanShardRecords(records, parsed, wantName, stripRecordSide) {
+    if (!wantName) return null;
     for (var i = 0; i < records.length; i++) {
       var r = records[i];
       var rName = N.normalizeStreetName(r.street);
-      if (rName !== want) continue;
+      if (stripRecordSide) rName = N.stripDirectionals(rName);
+      if (rName !== wantName) continue;
       if (parsed.number < r.lo || parsed.number > r.hi) continue;
       var oe = String(r.oddEven !== undefined ? r.oddEven : (r.oe !== undefined ? r.oe : 'B')).toUpperCase();
       if (oe === 'O' && parsed.number % 2 === 0) continue;
@@ -131,6 +151,26 @@
       return r;
     }
     return null;
+  }
+
+  /**
+   * Does the shard's street directory (`streets`: sorted unique names from ALL
+   * of the ZIP's raw address records, not just overrides) contain this street?
+   * Exact normalized compare first, then directional-stripped on both sides.
+   * Returns true / false, or null when the shard predates the `streets` field
+   * (old format — caller must keep legacy behavior).
+   */
+  function shardStreetKnown(shard, parsed) {
+    if (!shard || !Array.isArray(shard.streets)) return null;
+    if (!parsed) return null;
+    var want = parsed.name;
+    var wantStripped = N.stripDirectionals(want);
+    for (var i = 0; i < shard.streets.length; i++) {
+      var s = N.normalizeStreetName(shard.streets[i]);
+      if (s === want) return true;
+      if (N.stripDirectionals(s) === wantStripped) return true;
+    }
+    return false;
   }
 
   /** Countywide transit for a county (e.g. Franklin -> COTA 25000), if any. */
@@ -223,6 +263,7 @@
 
         // ---- step 4: street-address shard ----
         var parsed = N.parseStreet(addr.street);
+        var streetUnknown = false; // street absent from the shard's street directory
         if (parsed) {
           var shard = null;
           try { shard = await deps.getShard(addr.zip5, data.meta && data.meta.version); }
@@ -230,7 +271,22 @@
           if (shard && shard.addr) {
             var rec = matchShardStreet(shard.addr, parsed);
             if (rec) return finish(data, dataSource, { c: rec.c, t: rec.t }, 'exact', 'addr', {});
-            attempts.push({ stage: 'addr-shard', cause: 'no-match', message: 'street not in override ranges' });
+            var known = shardStreetKnown(shard, parsed);
+            if (known === true && entry.d) {
+              // The shards are lossless override-only compactions: a street
+              // that exists in this ZIP but hits no override range IS the
+              // ZIP's default jurisdiction (verified when the sidecar was built).
+              return finish(data, dataSource, entry.d, 'exact', 'addr-default', {});
+            }
+            if (known === false) {
+              // Unknown/typo'd/nonexistent street: Census is allowed to try,
+              // but only trusted if it matches within THIS ZIP (see guard below).
+              streetUnknown = true;
+              attempts.push({ stage: 'addr-shard', cause: 'street-unknown', message: 'street not found in this ZIP\'s street directory' });
+            } else {
+              // known === null: old-format shard without `streets` — legacy behavior
+              attempts.push({ stage: 'addr-shard', cause: 'no-match', message: 'street not in override ranges' });
+            }
           } else {
             attempts.push({ stage: 'addr-shard', cause: 'unavailable', message: 'shard not hosted / fetch failed' });
           }
@@ -238,6 +294,25 @@
 
         // ---- step 5: Census geocoder ----
         var geo = await censusCounty(addr, attempts);
+        // Fuzzy-snap guard: Census silently "corrects" nonexistent/typo'd
+        // addresses onto nearby streets — sometimes across a county line. If
+        // its matched address landed in a DIFFERENT ZIP, its county says
+        // nothing about the input address: fall back to the ZIP default.
+        if (geo && geo.countyFips && geo.matchedZip && geo.matchedZip !== addr.zip5) {
+          attempts.push({
+            stage: 'census', cause: 'zip-mismatch',
+            message: 'Census matched a different ZIP (' + geo.matchedZip + ') — likely a fuzzy snap onto another street'
+          });
+          if (entry.d) {
+            return finish(data, dataSource, entry.d, 'verify', 'zip-default', {
+              candidates: candidates,
+              note: (streetUnknown ? 'Street not found in this ZIP; ' : '') +
+                'Census matched a different ZIP — using ZIP default',
+              attempts: attempts
+            });
+          }
+          geo.countyFips = null; // no default to fall back on: distrust the county
+        }
         if (geo && geo.countyFips) {
           var filtered = candidates.filter(function (c) { return c.c === geo.countyFips; });
           if (filtered.length === 1) {
@@ -315,8 +390,16 @@
           return null;
         }
         var m = matches[0];
-        var out = { lat: null, lon: null, countyFips: null };
+        var out = { lat: null, lon: null, countyFips: null, matchedZip: null };
         if (m.coordinates) { out.lat = m.coordinates.y; out.lon = m.coordinates.x; }
+        // ZIP of the address Census actually matched (it fuzzy-snaps typos and
+        // nonexistent numbers onto nearby streets, sometimes in another ZIP).
+        if (m.addressComponents && m.addressComponents.zip) {
+          out.matchedZip = String(m.addressComponents.zip).slice(0, 5);
+        } else if (m.matchedAddress) {
+          var zm = String(m.matchedAddress).match(/(\d{5})(?:-\d{4})?\s*$/);
+          if (zm) out.matchedZip = zm[1];
+        }
         var geos = m.geographies || {};
         var counties = geos['Counties'] || geos['counties'] || [];
         if (counties.length) {
@@ -476,7 +559,7 @@
       return {
         status: 'resolved',
         confidence: confidence,          // 'exact' | 'high' | 'verify'
-        method: method,                  // zip5|zip4|addr|census|census-county|fcc|zip-default
+        method: method,                  // zip5|zip4|addr|addr-default|census|census-county|fcc|zip-default
         county: d.county,
         transit: d.transit,
         stateRate: data.stateRate,
@@ -516,6 +599,7 @@
     computeTotal: computeTotal,
     matchZip4: matchZip4,
     matchShardStreet: matchShardStreet,
+    shardStreetKnown: shardStreetKnown,
     countywideTransitFor: countywideTransitFor,
     createResolver: createResolver
   };

@@ -60,9 +60,14 @@ per normalized address for the browser session.
   then on. 404 (hosting not set up yet) is silently ignored.
 - The active version + source (bundled/remote) shows in the popup footer and
   on the Options page, which also has a **"Check for data update now"** button.
-- Quarterly refresh procedure: run `node build.js` in `tax-data-pipeline\`,
-  upload `dist/ohio-tax-data.min.json` (and `dist/addr-shards/*`) to the GCS
-  bucket. All installed extensions pick it up within 3 days.
+- Default hosting is **GitHub Pages** (`jefe2332.github.io/steambrite-tax`),
+  published automatically by the repo's data workflow — any push touching
+  `pipeline/**` (or the quarterly schedule) rebuilds and republishes data +
+  shards. All installed extensions pick it up within 3 days.
+- Manual fallback host: the GCS bucket
+  (`storage.googleapis.com/tax-rate-calculator-assets`) — run
+  `node pipeline/build.js` and upload `dist/ohio-tax-data.min.json` +
+  `dist/addr-shards/*` there, then point Options at it.
 
 ## Options page (right-click icon → Options)
 

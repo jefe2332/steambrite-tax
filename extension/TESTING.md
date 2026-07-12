@@ -6,9 +6,13 @@ runs against the REAL bundled data file (`data/ohio-tax-data.json`, version
 Windows, after the live-Jobber scanner fixes (see section 3).
 
 ```
-node tests/resolver.test.js    -> 47 passed, 0 failed
+node tests/resolver.test.js    -> 63 passed, 0 failed   (2026-07-11, post-Sunbury fix)
 node tests/scanner.test.js     -> 71 passed, 0 failed
 ```
+
+> 2026-07-11 update (v2.0.2): resolver suite grew from 47 to 63 with section 11
+> — the live "6000 S Sunbury Rd, Westerville 43082" regression (see section 7
+> below). Sections 1–10 output is unchanged from the run recorded here.
 
 ## 1. tests/resolver.test.js — ACTUAL OUTPUT (47/47 pass)
 
@@ -285,12 +289,53 @@ real client page (Marival Way property) is the next Phase-D gate.
 
 ## 6. Known gaps / waiting on hosting
 
-- `addr-shards/` per-ZIP files are not hosted yet (being generated in
-  parallel). The code fetches `<shardBaseUrl>/<zip5>.json`, caches per data
-  version, and treats 404/network-fail as "shard unavailable" (falls through
-  to Census). Resolver test 7 exercises the matcher against the documented
-  shape (`{zip,v,addr:[{street,lo,hi,oddEven,c,t}]}`) and the legacy `oe` key.
-- Hosted `ohio-tax-data.min.json` returns 404 until uploaded to the bucket —
-  handled silently; bundled 2026Q1 data is the floor.
-- Census/FCC/backend calls are stubbed in tests; live smoke test of those
-  three endpoints happens during Phase-D verification on real Jobber pages.
+- ~~`addr-shards/` per-ZIP files are not hosted yet~~ — RESOLVED: GitHub Pages
+  (`jefe2332.github.io/steambrite-tax`) hosts data + shards and is the default
+  since v2.0.2; the workflow republishes on any push touching `pipeline/**`.
+  The code still treats 404/network-fail as "shard unavailable" (falls through
+  to Census). Resolver test 7 exercises the matcher against the shard shape
+  (`{zip,v,streets,addr:[{street,lo,hi,oddEven,c,t}]}`) and the legacy `oe` key;
+  test 11 covers the `streets` directory semantics.
+- Census/FCC calls are stubbed in tests; the backend smoke test (section 7)
+  exercised the full local stack against the real shard files.
+
+## 7. Live Sunbury Rd regression (2026-07-11, v2.0.2)
+
+Live backend verification found: POST /api/lookup for
+"6000 S Sunbury Rd, Westerville, OH 43082" returned **Franklin+COTA 8.00%
+"high"** — wrong. State boundary A-records put SUNBURY RD in 43082 in county
+041 (Delaware), no transit → **7.00%**. Two compounding causes:
+
+1. street-name miss: the state file stores "SUNBURY RD" (no directional),
+   input said "S Sunbury Rd" — the exact-match compare failed;
+2. house number 6000 exists in no range (nonexistent address), so the resolver
+   fell to Census, which fuzzy-snapped onto a Franklin-side street (matched
+   ZIP 43081) and confidently returned county 049.
+
+Fixes (resolver test section 11 locks all of them in):
+
+- `normalize.js` gained `stripDirectionals()`; shard street matching (both
+  override ranges and the street directory) tries exact first, then
+  directional-stripped on both sides;
+- shards now carry `streets` (full street directory of the ZIP): street in
+  `streets` with no override row → ZIP default combo, **exact**
+  (method `addr-default`); street not in `streets` → Census allowed, BUT its
+  matched address must be in the SAME ZIP5 — on mismatch the resolver returns
+  the ZIP default with **verify** instead of trusting the snapped county;
+- old-format shards (no `streets`) keep the previous behavior.
+
+Local backend smoke test after the fix (real shard files served locally,
+`SMOKE=1`, port 8930):
+
+```
+POST /api/lookup {"address":{"street":"6000 S Sunbury Rd","city":"Westerville","state":"OH","zip":"43082"},"forceOhio":true}
+-> {"state":{"name":"Ohio","rate":0.0575},"county":{"name":"Delaware","rate":0.0125},
+    "city":{"name":"Westerville","rate":0},"districts":[],"totalRate":0.07,
+    "locationName":"Westerville, OH 43082", ..., "confidence":"exact"}   ✔ was Franklin 8.00% "high"
+
+POST … "305 S Sunbury Rd" (odd, inside override range 301-335)
+-> Delaware + COTA district, totalRate 0.08, confidence "exact"          ✔ directional-stripped range match
+
+POST … "123 S High St, Columbus 43215"  -> Franklin + COTA 0.08 "exact"  ✔ control unchanged
+POST … "456 Reading Rd, Mason 45040"    -> Warren 0.0675 "exact"         ✔ control unchanged
+```

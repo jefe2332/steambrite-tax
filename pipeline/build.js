@@ -298,9 +298,14 @@ async function parseBoundary(boundaryCsv) {
   const ambiguous = new Set();
   for (const [zip, set] of zipCombos) if (set.size > 1) ambiguous.add(zip);
 
-  // Pass 2: collect override ZIP+4 and address ranges for ambiguous ZIPs only.
+  // Pass 2: collect override ZIP+4 and address ranges for ambiguous ZIPs only,
+  // PLUS the full street directory (ALL streets present in each ambiguous
+  // ZIP's A-records, default rows included). The directory is what lets a
+  // consumer distinguish "street exists here with the default combo" (exact)
+  // from "street unknown in this ZIP" (typo/nonexistent -> geocoder guard).
   const zip4 = new Map(); // zip -> [{lo,hi,c,t}]
   const addr = new Map(); // zip -> [{street,lo,hi,oe,c,t}]
+  const zipStreets = new Map(); // zip -> Set(street) — ALL A-record streets
 
   await forEachLine(boundaryCsv, (line) => {
     const f = line.split(',');
@@ -310,26 +315,33 @@ async function parseBoundary(boundaryCsv) {
     const zip = type === 'A' ? f[15] : f[17];
     if (!ambiguous.has(zip)) return;
     const key = comboKey(f[24], f[30]);
-    if (key === zipDefault.get(zip)) return; // override-only (skip default)
-    const combo = comboObj(key);
 
-    if (type === '4') {
-      const lo = parseInt(f[18], 10);
-      const hi = parseInt(f[20], 10);
-      if (!zip4.has(zip)) zip4.set(zip, []);
-      zip4.get(zip).push({ lo, hi, c: combo.c, t: combo.t });
-    } else if (type === 'A') {
+    if (type === 'A') {
       const street = [f[6], f[7], f[8], f[9]]
         .map(s => s.trim()).filter(Boolean).join(' ');
+      if (street) {
+        let ss = zipStreets.get(zip);
+        if (!ss) { ss = new Set(); zipStreets.set(zip, ss); }
+        ss.add(street);
+      }
+      if (key === zipDefault.get(zip)) return; // override-only (skip default)
+      const combo = comboObj(key);
       const lo = parseInt(f[3], 10);
       const hi = parseInt(f[4], 10);
       const oe = f[5] || 'B';
       if (!addr.has(zip)) addr.set(zip, []);
       addr.get(zip).push({ street, lo, hi, oe, c: combo.c, t: combo.t });
+    } else if (type === '4') {
+      if (key === zipDefault.get(zip)) return; // override-only (skip default)
+      const combo = comboObj(key);
+      const lo = parseInt(f[18], 10);
+      const hi = parseInt(f[20], 10);
+      if (!zip4.has(zip)) zip4.set(zip, []);
+      zip4.get(zip).push({ lo, hi, c: combo.c, t: combo.t });
     }
   });
 
-  return { zipCombos, zipDefault, countyCombos, ambiguous, zip4, addr, active };
+  return { zipCombos, zipDefault, countyCombos, ambiguous, zip4, addr, zipStreets, active };
 }
 
 // ---------------------------------------------------------------------------
@@ -471,26 +483,40 @@ function build() {
     // One shard per AMBIGUOUS ZIP so the extension fetches only the ZIP it
     // needs. Same override-only semantics as the combined sidecar; note the
     // shard field is `oddEven` (spelled out) vs the sidecar's compact `oe`.
+    // Each shard also carries `streets`: the sorted unique directory of ALL
+    // street names in the ZIP's raw A-records (default rows included). A
+    // street present in `streets` but absent from `addr` overrides is, by
+    // construction, the ZIP's DEFAULT jurisdiction; a street absent from
+    // `streets` is unknown in this ZIP (typo/nonexistent — resolvers must not
+    // trust geocoder fuzzy snaps for it).
     // Ambiguous ZIPs with zero overrides still get a shard (addr: []) so a
     // fetch never 404s.
     const shardDir = path.join(DIST, 'addr-shards');
     fs.rmSync(shardDir, { recursive: true, force: true }); // drop stale shards
     ensureDir(shardDir);
     const shardSizes = [];
+    let shardBytesWithoutStreets = 0; // for the size-delta report
+    let streetsTotal = 0;
     for (const zip of [...b.ambiguous].sort()) {
       const recs = (addr[zip] || []).map(rec => ({
         street: rec.street, lo: rec.lo, hi: rec.hi,
         oddEven: rec.oe, c: rec.c, t: rec.t,
       }));
-      const shard = { zip, v: meta.version, addr: recs };
+      const streets = [...(b.zipStreets.get(zip) || [])].sort();
+      streetsTotal += streets.length;
+      const shard = { zip, v: meta.version, streets, addr: recs };
       const p = path.join(shardDir, zip + '.json');
       fs.writeFileSync(p, JSON.stringify(shard));
       shardSizes.push(fs.statSync(p).size);
+      shardBytesWithoutStreets +=
+        Buffer.byteLength(JSON.stringify({ zip, v: meta.version, addr: recs }));
     }
     shardSizes.sort((a, x) => a - x);
     const shardStats = {
       count: shardSizes.length,
       total: shardSizes.reduce((a, x) => a + x, 0),
+      totalWithoutStreets: shardBytesWithoutStreets,
+      streetsTotal,
       min: shardSizes[0] || 0,
       median: shardSizes.length
         ? shardSizes[Math.floor(shardSizes.length / 2)] : 0,
@@ -515,6 +541,9 @@ function build() {
       `(min ${(shardStats.min / 1e3).toFixed(1)} KB, ` +
       `median ${(shardStats.median / 1e3).toFixed(1)} KB, ` +
       `max ${(shardStats.max / 1e3).toFixed(1)} KB)`);
+    log(`    street directories: ${shardStats.streetsTotal} street names across all shards; ` +
+      `size delta vs override-only shards: +${((shardStats.total - shardStats.totalWithoutStreets) / 1e6).toFixed(2)} MB ` +
+      `(${(shardStats.totalWithoutStreets / 1e6).toFixed(2)} -> ${(shardStats.total / 1e6).toFixed(2)} MB)`);
 
     // ---- verification ----
     require('./verify.js').run({

@@ -78,7 +78,10 @@ Do these once. After that, nothing needs manual quarterly attention.
    - `GEMINI_API_KEY = <key>` — **only** needed if you want non-Ohio lookups. Without
      it, non-Ohio addresses return HTTP 422 (Ohio lookups never need it).
 
-   Leaving these unset keeps the current GCS defaults, which is fine.
+   Leaving these unset now uses the GitHub Pages defaults baked into
+   `server.js` (`jefe2332.github.io/steambrite-tax`). The old GCS bucket
+   (`storage.googleapis.com/tax-rate-calculator-assets`) remains available as a
+   manual fallback host — set these env vars to it if Pages is ever down.
 
 From now on, **every push to `main` auto-deploys the backend.**
 
@@ -94,7 +97,9 @@ can switch it to your Pages data **without reinstalling**:
    - **Shard base URL** = `https://<your-github-username>.github.io/steambrite-tax/addr-shards`
 3. Click **Check for updates**. It should report the current data version.
 
-Leaving these at their GCS defaults also works.
+These Pages URLs are already the extension's built-in defaults (since v2.0.2),
+so a fresh install needs no Options changes. The GCS bucket remains a
+documented manual fallback if Pages is ever unavailable.
 
 ---
 
