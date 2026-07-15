@@ -9,6 +9,7 @@ const METHOD_TEXT = {
   zip5: 'via ZIP code (unambiguous)',
   zip4: 'via ZIP+4 boundary range',
   addr: 'via street-address boundary range',
+  'addr-default': 'via street directory (ZIP default)',
   census: 'via Census geocoder',
   'census-county': 'via Census geocoder (county)',
   fcc: 'via FCC area lookup',
@@ -129,50 +130,100 @@ document.addEventListener('DOMContentLoaded', () => {
 
       chrome.tabs.sendMessage(tab.id, { action: 'SCAN_ADDRESSES' }, (scanResp) => {
         if (chrome.runtime.lastError) {
-          showError('Could not connect to the page.',
-            'Refresh the Jobber tab and try again. (' + chrome.runtime.lastError.message + ')');
-          done('Ready');
+          // Content script is not in this tab — classic MV3: the tab was open
+          // BEFORE the extension was installed, or the (unpacked) extension
+          // was reloaded and orphaned its old script. Self-heal: inject the
+          // content script now, then retry the scan ONCE.
+          void chrome.runtime.lastError;
+          selfHealAndRetry(tab, done);
           return;
         }
-        const addresses = scanResp && scanResp.addresses ? scanResp.addresses : [];
-        if (!addresses.length) {
-          showInfo('No complete addresses found on this page. Open a client, property, quote or invoice.');
-          done('No addresses found');
-          return;
-        }
-
-        setStatus('Found ' + addresses.length + ' address' + (addresses.length > 1 ? 'es' : '') + ' — resolving…');
-
-        chrome.runtime.sendMessage({ type: 'RESOLVE_ADDRESSES', addresses }, (resp) => {
-          if (chrome.runtime.lastError) {
-            showError('Lookup service unavailable.', chrome.runtime.lastError.message);
-            done('Ready');
-            return;
-          }
-          if (!resp || !resp.ok) {
-            const e = resp && resp.error ? resp.error : {};
-            showError('Lookup failed: ' + (e.message || 'unknown error'), causeToText(e.cause));
-            done('Ready');
-            return;
-          }
-
-          clearResults();
-          resp.results.forEach(r => renderResult(r));
-          if (resp.dataVersion) {
-            dataInfo.textContent = 'Data: ' + resp.dataVersion + ' (' + resp.dataSource + ')';
-          }
-
-          // hand results to the content script so badges appear on the page
-          chrome.tabs.sendMessage(tab.id, { action: 'INJECT_BADGES', results: resp.results }, () => {
-            void chrome.runtime.lastError; // page may have navigated; not fatal
-            done('Done');
-            setTimeout(() => {
-              if (scanStatus.textContent === 'Done') setStatus('Ready');
-            }, 3000);
-          });
-        });
+        handleScanResponse(tab, scanResp, done);
       });
     });
+  }
+
+  function handleScanResponse(tab, scanResp, done) {
+    const addresses = scanResp && scanResp.addresses ? scanResp.addresses : [];
+    if (!addresses.length) {
+      showInfo('No complete addresses found on this page. Open a client, property, quote or invoice.');
+      done('No addresses found');
+      return;
+    }
+
+    setStatus('Found ' + addresses.length + ' address' + (addresses.length > 1 ? 'es' : '') + ' — resolving…');
+
+    chrome.runtime.sendMessage({ type: 'RESOLVE_ADDRESSES', addresses }, (resp) => {
+      if (chrome.runtime.lastError) {
+        showError('Lookup service unavailable.', chrome.runtime.lastError.message);
+        done('Ready');
+        return;
+      }
+      if (!resp || !resp.ok) {
+        const e = resp && resp.error ? resp.error : {};
+        showError('Lookup failed: ' + (e.message || 'unknown error'), causeToText(e.cause));
+        done('Ready');
+        return;
+      }
+
+      clearResults();
+      resp.results.forEach(r => renderResult(r));
+      if (resp.dataVersion) {
+        dataInfo.textContent = 'Data: ' + resp.dataVersion + ' (' + resp.dataSource + ')';
+      }
+
+      // hand results to the content script so badges appear on the page
+      chrome.tabs.sendMessage(tab.id, { action: 'INJECT_BADGES', results: resp.results }, () => {
+        void chrome.runtime.lastError; // page may have navigated; not fatal
+        done('Done');
+        setTimeout(() => {
+          if (scanStatus.textContent === 'Done') setStatus('Ready');
+        }, 3000);
+      });
+    });
+  }
+
+  // Inject content.css + the content-script files (same order as the
+  // manifest: libs first, content.js last), wait briefly for the script to
+  // boot, then retry SCAN_ADDRESSES exactly once. content.js is idempotent:
+  // a 'taxext-teardown' event shuts down any older live copy first.
+  function selfHealAndRetry(tab, done) {
+    if (!chrome.scripting || !chrome.scripting.executeScript) {
+      showConnectError('this Chrome version lacks the scripting API');
+      done('Ready');
+      return;
+    }
+    setStatus('Connecting to the page…');
+    chrome.scripting.insertCSS({ target: { tabId: tab.id }, files: ['content.css'] }, () => {
+      // CSS failure alone is not fatal (badges would just be unstyled) —
+      // the executeScript below is the real gate.
+      void chrome.runtime.lastError;
+      chrome.scripting.executeScript(
+        { target: { tabId: tab.id }, files: ['lib/normalize.js', 'lib/scan-core.js', 'content.js'] },
+        () => {
+          if (chrome.runtime.lastError) {
+            // No host permission / chrome:// page / tab gone — cannot heal.
+            showConnectError(chrome.runtime.lastError.message);
+            done('Ready');
+            return;
+          }
+          setTimeout(() => {
+            chrome.tabs.sendMessage(tab.id, { action: 'SCAN_ADDRESSES' }, (scanResp) => {
+              if (chrome.runtime.lastError) {
+                showConnectError(chrome.runtime.lastError.message);
+                done('Ready');
+                return;
+              }
+              handleScanResponse(tab, scanResp, done);
+            });
+          }, 150);
+        });
+    });
+  }
+
+  function showConnectError(detail) {
+    showError('Could not connect to the page.',
+      'Refresh the Jobber tab and try again.' + (detail ? ' (' + detail + ')' : ''));
   }
 
   function renderResult(r) {

@@ -271,6 +271,64 @@ section('9. Decoy-dialog safety (documentation check)');
 }
 
 /* ------------------------------------------------------------------ */
+section('10. Self-heal + idempotency wiring (source checks, v2.0.3)');
+{
+  // The teardown/dead-flag mechanics are DOM+chrome bound, so what plain node
+  // CAN verify is the load-bearing source structure; the behavior itself is
+  // covered by the manual matrix in TESTING.md.
+  const fs3 = require('fs');
+  const contentSrc = fs3.readFileSync(path.join(__dirname, '..', 'content.js'), 'utf8');
+  const popupSrc = fs3.readFileSync(path.join(__dirname, '..', 'popup.js'), 'utf8');
+  const manifest = JSON.parse(fs3.readFileSync(path.join(__dirname, '..', 'manifest.json'), 'utf8'));
+
+  // -- content.js teardown handshake --
+  const dispatchIdx = contentSrc.indexOf('document.dispatchEvent(new CustomEvent(TEARDOWN_EVENT))');
+  const bindIdx = contentSrc.indexOf('document.addEventListener(TEARDOWN_EVENT, onTeardown)');
+  check('content.js dispatches taxext-teardown BEFORE binding its own teardown listener',
+    dispatchIdx !== -1 && bindIdx !== -1 && dispatchIdx < bindIdx,
+    'dispatch@' + dispatchIdx + ' bind@' + bindIdx);
+  const deadDeclIdx = contentSrc.indexOf('let dead = false');
+  check('dead flag declared before any binding', deadDeclIdx !== -1 && deadDeclIdx < bindIdx, 'decl@' + deadDeclIdx);
+  check('teardown sets dead, disconnects observer, clears debounce, removes message listener',
+    /function onTeardown\(\)[\s\S]*?dead = true;[\s\S]*?observer\.disconnect\(\)[\s\S]*?clearTimeout\(debounceTimer\)[\s\S]*?removeListener\(onRuntimeMessage\)/.test(contentSrc));
+  check('message listener is a NAMED function (removable)',
+    /chrome\.runtime\.onMessage\.addListener\(onRuntimeMessage\)/.test(contentSrc));
+  // dead-flag guards at every async entry point
+  check('onRuntimeMessage checks dead', /function onRuntimeMessage[\s\S]{0,200}if \(dead\) return false;/.test(contentSrc));
+  check('observer callback checks dead', /if \(dead \|\| suppressObserver\) return;/.test(contentSrc));
+  check('runAutoScan / scheduleScan / boot check dead',
+    /function runAutoScan\(\) \{\s*if \(dead\) return;/.test(contentSrc) &&
+    /function scheduleScan\(\) \{\s*if \(dead\) return;/.test(contentSrc) &&
+    /function boot\(\) \{\s*if \(dead\) return;/.test(contentSrc));
+  check('resolve callback checks dead (late responses ignored after takeover)',
+    /if \(dead\) return; \/\/ a newer copy took over/.test(contentSrc));
+  check('missing lib globals -> console.warn (log, not throw) + disable',
+    /if \(!N \|\| !S\) \{[\s\S]*?console\.warn/.test(contentSrc));
+
+  // -- popup.js self-heal flow --
+  check("popup injects CSS via chrome.scripting.insertCSS(files:['content.css'])",
+    /chrome\.scripting\.insertCSS\(\{ target: \{ tabId: tab\.id \}, files: \['content\.css'\] \}/.test(popupSrc));
+  const filesMatch = popupSrc.match(/chrome\.scripting\.executeScript\(\s*\{ target: \{ tabId: tab\.id \}, files: (\[[^\]]*\])/);
+  check('popup injects scripts in the SAME order as the manifest',
+    filesMatch !== null &&
+    JSON.stringify(JSON.parse(filesMatch[1].replace(/'/g, '"'))) === JSON.stringify(manifest.content_scripts[0].js),
+    filesMatch && filesMatch[1]);
+  check('retry happens once after ~150ms', /setTimeout\(\(\) => \{\s*chrome\.tabs\.sendMessage\(tab\.id, \{ action: 'SCAN_ADDRESSES' \}/.test(popupSrc) && /\}, 150\);/.test(popupSrc));
+  check('lastError detected by truthiness, not string matching',
+    !/lastError\.message\.(includes|indexOf|match)/.test(popupSrc));
+  check("final fallback keeps the 'Refresh the Jobber tab' guidance",
+    /Refresh the Jobber tab and try again\./.test(popupSrc));
+
+  // -- manifest --
+  check("manifest has 'scripting' permission", manifest.permissions.includes('scripting'),
+    JSON.stringify(manifest.permissions));
+  check('manifest version is 2.0.3', manifest.version === '2.0.3', manifest.version);
+  check('manifest content_scripts order is normalize, scan-core, content',
+    JSON.stringify(manifest.content_scripts[0].js) === JSON.stringify(['lib/normalize.js', 'lib/scan-core.js', 'content.js']),
+    JSON.stringify(manifest.content_scripts[0].js));
+}
+
+/* ------------------------------------------------------------------ */
 console.log('\n================================');
 console.log('TOTAL: ' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

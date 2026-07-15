@@ -7,12 +7,16 @@ Windows, after the live-Jobber scanner fixes (see section 3).
 
 ```
 node tests/resolver.test.js    -> 63 passed, 0 failed   (2026-07-11, post-Sunbury fix)
-node tests/scanner.test.js     -> 71 passed, 0 failed
+node tests/scanner.test.js     -> 88 passed, 0 failed   (2026-07-12, post-self-heal)
 ```
 
 > 2026-07-11 update (v2.0.2): resolver suite grew from 47 to 63 with section 11
 > - the live "6000 S Sunbury Rd, Westerville 43082" regression (see section 7
 > below). Sections 1–10 output is unchanged from the run recorded here.
+>
+> 2026-07-12 update (v2.0.3): scanner suite grew from 71 to 88 with section 10
+> - self-heal injection + content-script idempotency wiring (see section 8
+> below for the change description and the manual verification matrix).
 
 ## 1. tests/resolver.test.js - ACTUAL OUTPUT (47/47 pass)
 
@@ -339,3 +343,59 @@ POST ... "305 S Sunbury Rd" (odd, inside override range 301-335)
 POST ... "123 S High St, Columbus 43215"  -> Franklin + COTA 0.08 "exact"  ✔ control unchanged
 POST ... "456 Reading Rd, Mason 45040"    -> Warren 0.0675 "exact"         ✔ control unchanged
 ```
+
+## 8. Self-heal injection + idempotent content script (2026-07-12, v2.0.3)
+
+Field report: popup showed "Could not connect to the page... (Could not
+establish connection. Receiving end does not exist.)" on a Jobber tab that was
+open BEFORE the extension was installed. Classic MV3: manifest content scripts
+only inject into pages loaded after install, and reloading an unpacked
+extension orphans the old copy in every open tab.
+
+Changes:
+
+- `manifest.json`: added the `scripting` permission; version 2.0.3.
+- `popup.js`: when SCAN_ADDRESSES gets `chrome.runtime.lastError` (detected by
+  truthiness — messages vary, no string matching), the popup self-heals:
+  `chrome.scripting.insertCSS(content.css)` +
+  `chrome.scripting.executeScript(['lib/normalize.js','lib/scan-core.js','content.js'])`
+  (same order as the manifest; executeScript file arrays inject sequentially),
+  then retries the scan ONCE after 150 ms. If injection itself fails (no host
+  permission, chrome:// page, tab gone), the friendly "Refresh the Jobber tab"
+  message remains the final fallback.
+- `content.js` idempotency: before binding anything, each copy dispatches a
+  `taxext-teardown` CustomEvent on `document` (DOM events cross isolated
+  worlds, so this reaches copies orphaned by an extension reload), then adds a
+  listener for the same event. When a NEWER copy loads, the older one sets a
+  `dead` flag, disconnects its MutationObserver, clears its debounce timer,
+  and removes its message listener (named function). Every async entry point
+  (message handler, observer callback, scheduled scans, late resolve
+  responses, boot timer) checks `dead`. Ordering: each copy executes
+  synchronously (dispatch, then bind), so back-to-back double injection
+  leaves exactly one live instance — the newest. The new instance's
+  `cleanupPreviousScan()` removes any stale badges/`data-tax-ext-*`
+  attributes on its first scan.
+- Lib load-order safety: content.js logs a `console.warn` (never throws) and
+  disables itself if the `TaxExtNormalize`/`TaxExtScanCore` globals are
+  missing.
+
+Automated coverage: scanner test section 10 (17 checks) verifies the source
+wiring — dispatch-before-bind ordering, dead-flag guards at every entry
+point, named/removable listener, popup file order matching the manifest,
+truthiness-based lastError detection, 150 ms single retry, `scripting`
+permission, and version. Suites: scanner 88/88, resolver 63/63.
+
+Manual verification matrix (run on a real install; behavior is DOM+chrome
+bound so node can't drive it):
+
+| # | Scenario | Expected | Status |
+|---|---|---|---|
+| a | Fresh Jobber tab opened AFTER install | badges + popup work as before | PENDING (teammate) |
+| b | Jobber tab open BEFORE install; click popup | one "Connecting to the page..." beat, then results — no tab refresh needed | PENDING (teammate — this is the reported field case) |
+| c | Reload unpacked extension while a Jobber tab is open; click popup | self-heals; exactly ONE badge per address (old copy torn down, no duplicates) | PENDING (teammate) |
+| d | Non-Jobber tab; click popup | unchanged "Open a Jobber page (secure.getjobber.com)..." info message, no injection attempted | PENDING (teammate) |
+
+Note for (c): the ORPHANED old copy cannot receive extension messages at all —
+recovery is entirely via the new copy's injection + the teardown event. If a
+badge ever appears doubled in (c), that is the teardown ordering failing; file
+it with the exact reload sequence.

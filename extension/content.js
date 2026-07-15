@@ -12,9 +12,34 @@
 (function () {
   'use strict';
 
+  // ---- idempotency / self-heal handshake ------------------------------
+  // This script can end up in a page more than once:
+  //   * the popup self-heals tabs opened BEFORE install by injecting via
+  //     chrome.scripting (a manifest-injected copy may already be live);
+  //   * reloading the unpacked extension ORPHANS the previous copy — its
+  //     chrome.runtime is dead but its DOM listeners/observer keep running.
+  // DOM events are shared across isolated worlds, so dispatching this event
+  // BEFORE binding anything tells every older copy to shut down; the listener
+  // added below lets a FUTURE copy shut THIS one down in turn.
+  // Ordering: each copy executes synchronously (dispatch, then bind), so even
+  // back-to-back injections leave exactly one live instance — the newest.
+  const TEARDOWN_EVENT = 'taxext-teardown';
+  try { document.dispatchEvent(new CustomEvent(TEARDOWN_EVENT)); } catch (e) { }
+
+  let dead = false; // set when a newer copy loads; checked in every callback
+
   const N = self.TaxExtNormalize;
   const S = self.TaxExtScanCore;
-  if (!N || !S) return;
+  if (!N || !S) {
+    // Lib load-order problem (normalize/scan-core must be injected before
+    // content.js — the manifest and the popup's executeScript both do this).
+    // Log and disable rather than throw.
+    try {
+      console.warn('[jobber-tax-ext] content.js loaded without lib globals ' +
+        '(TaxExtNormalize/TaxExtScanCore missing) — scanner disabled in this frame');
+    } catch (e) { }
+    return;
+  }
 
   let scanGen = 0;                  // monotonically increasing scan generation
   let lastScanAddresses = [];       // [{id, key, label, street, city, state, zip}]
@@ -23,6 +48,20 @@
   let observer = null;
   let debounceTimer = null;
   let suppressObserver = false;
+
+  function onTeardown() {
+    // A newer copy of this script just loaded — this instance must go inert:
+    // stop observing, cancel pending rescans, stop answering messages.
+    dead = true;
+    document.removeEventListener(TEARDOWN_EVENT, onTeardown);
+    try { if (observer) observer.disconnect(); } catch (e) { }
+    observer = null;
+    clearTimeout(debounceTimer);
+    try { chrome.runtime.onMessage.removeListener(onRuntimeMessage); } catch (e) { }
+    // Stale badges/data-tax-ext-* attributes left behind are removed by the
+    // NEW instance's cleanupPreviousScan() on its first scan.
+  }
+  document.addEventListener(TEARDOWN_EVENT, onTeardown);
 
   /* ------------------------------ utils ------------------------------ */
 
@@ -454,6 +493,7 @@
         responded = true;
         need.forEach(a => pendingKeys.delete(a.key));
         if (chrome.runtime.lastError) return; // SW asleep/reloading — next scan retries
+        if (dead) return; // a newer copy took over while we were waiting
         if (!resp || !resp.ok || !Array.isArray(resp.results)) return;
         resp.results.forEach(r => { if (r.key) resultCache.set(r.key, r); });
         injectAllBadges();
@@ -466,6 +506,7 @@
   }
 
   function runAutoScan() {
+    if (dead) return;
     const addresses = safeScan();
     if (!addresses.length) return;
     injectAllBadges();          // fix #9: re-inject from cache without re-fetching
@@ -482,14 +523,15 @@
   }
 
   function scheduleScan() {
+    if (dead) return;
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(runAutoScan, 800); // fix #9: debounced 800ms
   }
 
   function startObserver() {
-    if (observer) return;
+    if (dead || observer) return;
     observer = new MutationObserver(muts => {
-      if (suppressObserver) return;
+      if (dead || suppressObserver) return;
       let relevant = false;
       for (const m of muts) {
         const nodes = [...m.addedNodes, ...m.removedNodes];
@@ -503,8 +545,9 @@
 
   /* ------------------------------ messaging ---------------------------- */
 
-  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  function onRuntimeMessage(msg, sender, sendResponse) {
     // fix #10: always respond, synchronously — never leave the port hanging
+    if (dead) return false; // a newer copy owns this page now
     try {
       if (msg && msg.action === 'PING') {
         sendResponse({ ok: true });
@@ -528,11 +571,13 @@
       return false;
     }
     return false;
-  });
+  }
+  chrome.runtime.onMessage.addListener(onRuntimeMessage);
 
   /* ------------------------------- boot -------------------------------- */
 
   function boot() {
+    if (dead) return;
     startObserver();
     setTimeout(runAutoScan, 600);
   }
