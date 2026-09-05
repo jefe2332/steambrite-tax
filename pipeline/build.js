@@ -52,10 +52,15 @@ const UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
   '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
-const BASE = 'https://thefinder.tax.ohio.gov/streamlinesalestaxweb/Download';
-const BDATA = BASE + '/BoundaryData';
-const INSTR_BOUNDARY = BASE + '/DownloadInstructions.aspx';
-const INSTR_RATE = BASE + '/SSTPRateTableInstructions.aspx';
+// The Finder (rebuilt as a Next.js app, September 2026). The site lists its
+// downloadable files as JSON and serves each file through a same-origin proxy;
+// the direct api.thefinder.tax.ohio.gov URLs require authentication.
+const FINDER = 'https://thefinder.tax.ohio.gov';
+const LIST_URL = FINDER + '/api/file-downloads?type=salesAndUse';
+const PROXY = FINDER + '/api/file-downloads/content?target=';
+const proxied = (u) => PROXY + encodeURIComponent(u);
+// Direct source URLs recorded during download(), written into meta.sources.
+const SOURCES = [];
 
 const FRESH = process.argv.includes('--fresh');
 
@@ -77,14 +82,6 @@ function curlText(url) {
   });
 }
 
-// Scrape an instruction page for a BoundaryData link matching `re`.
-function discoverLink(pageUrl, re) {
-  const html = curlText(pageUrl);
-  const m = html.match(re);
-  if (!m) throw new Error(`Could not find link matching ${re} on ${pageUrl}`);
-  return m[0].replace(/^\.?\//, ''); // strip leading ./ or /
-}
-
 // round to 5 decimal places to kill FP noise
 function r5(x) { return Math.round(x * 1e5) / 1e5; }
 
@@ -94,32 +91,44 @@ function r5(x) { return Math.round(x * 1e5) / 1e5; }
 function download() {
   ensureDir(RAW);
 
-  // Discover the current quarterly file names from the instruction pages.
-  let boundaryZipName, rateCsvName;
+  // Ask The Finder for its current sales-and-use download list. The quarterly
+  // boundary/rate file names (OHB2026Q1NOV28.zip etc.) come from this JSON.
+  let boundaryZipName, rateCsvName, urls = null;
   try {
-    boundaryZipName = path.basename(
-      discoverLink(INSTR_BOUNDARY, /OHB\d{4}Q\d[A-Z0-9]*\.zip/i));
-    rateCsvName = path.basename(
-      discoverLink(INSTR_RATE, /OHR\d{4}Q\d[A-Z0-9]*\.csv/i));
+    const list = JSON.parse(curlText(LIST_URL));
+    urls = list.downloadUrls || {};
+    const need = ['sstpRateDataZip', 'sstpRateDatabase', 'countyFips',
+      'muniFips', 'transitFips', 'countyRateReportCsv'];
+    const missing = need.filter(k => !urls[k]);
+    if (missing.length) throw new Error(`file list missing ${missing.join(', ')}`);
+    boundaryZipName = path.basename(new URL(urls.sstpRateDataZip).pathname);
+    rateCsvName = path.basename(new URL(urls.sstpRateDatabase).pathname);
     log(`  discovered boundary file: ${boundaryZipName}`);
     log(`  discovered rate file:     ${rateCsvName}`);
   } catch (e) {
     // Fall back to whatever OHB*.zip / OHR*.csv already sits in raw/.
-    log(`  link discovery failed (${e.message}); falling back to raw/ contents`);
+    log(`  file list unavailable (${e.message}); falling back to raw/ contents`);
     const files = fs.existsSync(RAW) ? fs.readdirSync(RAW) : [];
     boundaryZipName = files.find(f => /^OHB.*\.zip$/i.test(f));
     rateCsvName = files.find(f => /^OHR.*\.csv$/i.test(f));
     if (!boundaryZipName || !rateCsvName) throw e;
   }
 
-  const jobs = [
-    [boundaryZipName, `${BDATA}/${boundaryZipName}`],
-    [rateCsvName, `${BDATA}/${rateCsvName}`],
-    ['OHCountyFIPSCodes.txt', `${BDATA}/OHCountyFIPSCodes.txt`],
-    ['OHMuniFIPSCodes.txt', `${BDATA}/OHMuniFIPSCodes.txt`],
-    ['OHTransitFIPSCodes.txt', `${BDATA}/OHTransitFIPSCodes.txt`],
-    ['CountySalesTaxRateReport.csv', `${BDATA}/CountySalesTaxRateReport.csv`],
-  ];
+  const jobs = urls ? [
+    [boundaryZipName, proxied(urls.sstpRateDataZip), urls.sstpRateDataZip],
+    [rateCsvName, proxied(urls.sstpRateDatabase), urls.sstpRateDatabase],
+    ['OHCountyFIPSCodes.txt', proxied(urls.countyFips), urls.countyFips],
+    ['OHMuniFIPSCodes.txt', proxied(urls.muniFips), urls.muniFips],
+    ['OHTransitFIPSCodes.txt', proxied(urls.transitFips), urls.transitFips],
+    ['CountySalesTaxRateReport.csv', proxied(urls.countyRateReportCsv), urls.countyRateReportCsv],
+  ] : [];
+  for (const j of jobs) SOURCES.push(j[2]);
+  if (!urls) {
+    for (const name of [boundaryZipName, rateCsvName, 'OHCountyFIPSCodes.txt',
+      'OHMuniFIPSCodes.txt', 'OHTransitFIPSCodes.txt', 'CountySalesTaxRateReport.csv']) {
+      if (!fs.existsSync(path.join(RAW, name))) throw new Error(`offline and ${name} is not cached in raw/`);
+    }
+  }
 
   for (const [name, url] of jobs) {
     const dest = path.join(RAW, name);
@@ -444,12 +453,8 @@ function build() {
       version: src.version,
       generatedAt: new Date().toISOString(),
       effectiveDate: TODAY_ISO,
-      sources: [
-        `${BDATA}/${src.boundaryZipName}`,
-        `${BDATA}/${src.rateCsvName}`,
-        `${BDATA}/OHCountyFIPSCodes.txt`,
-        `${BDATA}/OHTransitFIPSCodes.txt`,
-        `${BDATA}/CountySalesTaxRateReport.csv`,
+      sources: SOURCES.length ? SOURCES.slice() : [
+        FINDER + '/?tab=fileDownloads',
       ],
       counts: {
         counties: Object.keys(counties).length,

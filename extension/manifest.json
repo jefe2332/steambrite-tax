@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Jobber Tax Calculator Extension",
-  "version": "2.0.5",
+  "version": "2.0.6",
   "description": "Suggests the exact Ohio sales-tax jurisdiction and matching Jobber tax group for addresses on Jobber pages.",
   "permissions": [
     "storage",

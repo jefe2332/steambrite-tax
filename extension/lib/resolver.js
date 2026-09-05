@@ -34,7 +34,7 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function (N) {
   'use strict';
 
-  var FINDER_URL = 'https://thefinder.tax.ohio.gov/streamlinesalestaxweb/AddressLookup/LookupByAddress.aspx?taxType=Sales';
+  var FINDER_URL = 'https://thefinder.tax.ohio.gov/?tab=rateSearch';
 
   // The business's ACTUAL current Jobber tax-group names, keyed by
   // "CountyName|TransitName" (transit name empty when none).

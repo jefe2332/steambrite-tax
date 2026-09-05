@@ -414,7 +414,7 @@
       const warnText = document.createElement('span');
       warnText.textContent = '⚠ boundary area — verify ';
       const link = document.createElement('a');
-      link.href = result.finderUrl || 'https://thefinder.tax.ohio.gov/streamlinesalestaxweb/AddressLookup/LookupByAddress.aspx?taxType=Sales';
+      link.href = result.finderUrl || 'https://thefinder.tax.ohio.gov/?tab=rateSearch';
       link.target = '_blank';
       link.rel = 'noopener noreferrer';
       link.textContent = 'Check in The Finder';

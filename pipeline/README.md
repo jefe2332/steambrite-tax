@@ -142,8 +142,9 @@ node build.js --fresh
 `build.js` scrapes the two instruction pages for the **current** boundary `.zip`
 and rate `.csv` links, so you do **not** need to edit file names by hand:
 
-- Boundary DB: <https://thefinder.tax.ohio.gov/streamlinesalestaxweb/Download/DownloadInstructions.aspx>
-- Rate table:  <https://thefinder.tax.ohio.gov/streamlinesalestaxweb/Download/SSTPRateTableInstructions.aspx>
+- File list (JSON): <https://thefinder.tax.ohio.gov/api/file-downloads?type=salesAndUse> (keys sstpRateDataZip, sstpRateDatabase, countyFips, muniFips, transitFips, countyRateReportCsv)
+- Each file is fetched through the site proxy: `https://thefinder.tax.ohio.gov/api/file-downloads/content?target=<url-encoded file URL>`
+- The Finder home page: <https://thefinder.tax.ohio.gov/?tab=fileDownloads>
 
 All raw downloads are kept in `raw/` (they are the quarterly inputs). All state
 requests send a browser `User-Agent`; the state servers 404 generic fetchers.

@@ -20,7 +20,7 @@ Taxation ("The Finder") data, and shows:
 3. Toggle **Developer mode** ON (top right).
 4. Click **Load unpacked** → select the `chrome-tax-extension-v2` folder.
 5. (If replacing v1: click **Remove** on the old v1 "Jobber Tax Calculator
-   Extension" entry first - same name, so check the version says 2.0.5.)
+   Extension" entry first - same name, so check the version says 2.0.6.)
 6. Open any Jobber client/quote/invoice page - badges appear automatically;
    click the extension icon for the full cards.
 
@@ -42,7 +42,7 @@ For each address the service worker resolves, in order (first hit wins):
 | - | Everything offline: ZIP's default combo | Verify |
 
 **Verify** badges show "⚠ boundary area - verify" plus a one-click link to
-[Ohio's The Finder](https://thefinder.tax.ohio.gov/streamlinesalestaxweb/AddressLookup/LookupByAddress.aspx?taxType=Sales)
+[Ohio's The Finder](https://thefinder.tax.ohio.gov/?tab=rateSearch)
 so a human can confirm in ~10 seconds. Rate math is always
 `state 5.75% + county + (transit if any)`.
 
