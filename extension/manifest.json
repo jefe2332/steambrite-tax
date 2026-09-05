@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Jobber Tax Calculator Extension",
-  "version": "2.0.4",
-  "description": "Suggests the exact Ohio sales-tax jurisdiction (county + transit district) and the matching Jobber tax group for addresses on Jobber pages. Powered by bundled official Ohio Dept. of Taxation (The Finder) data.",
+  "version": "2.0.5",
+  "description": "Suggests the exact Ohio sales-tax jurisdiction and matching Jobber tax group for addresses on Jobber pages.",
   "permissions": [
     "storage",
     "alarms",
@@ -42,9 +42,17 @@
   "options_page": "options.html",
   "content_scripts": [
     {
-      "matches": ["https://secure.getjobber.com/*"],
-      "css": ["content.css"],
-      "js": ["lib/normalize.js", "lib/scan-core.js", "content.js"],
+      "matches": [
+        "https://secure.getjobber.com/*"
+      ],
+      "css": [
+        "content.css"
+      ],
+      "js": [
+        "lib/normalize.js",
+        "lib/scan-core.js",
+        "content.js"
+      ],
       "run_at": "document_idle"
     }
   ]

@@ -322,7 +322,7 @@ section('10. Self-heal + idempotency wiring (source checks, v2.0.3)');
   // -- manifest --
   check("manifest has 'scripting' permission", manifest.permissions.includes('scripting'),
     JSON.stringify(manifest.permissions));
-  check('manifest version is 2.0.4', manifest.version === '2.0.4', manifest.version);
+  check('manifest version is 2.0.5', manifest.version === '2.0.5', manifest.version);
   check('manifest content_scripts order is normalize, scan-core, content',
     JSON.stringify(manifest.content_scripts[0].js) === JSON.stringify(['lib/normalize.js', 'lib/scan-core.js', 'content.js']),
     JSON.stringify(manifest.content_scripts[0].js));

@@ -20,7 +20,7 @@ Taxation ("The Finder") data, and shows:
 3. Toggle **Developer mode** ON (top right).
 4. Click **Load unpacked** → select the `chrome-tax-extension-v2` folder.
 5. (If replacing v1: click **Remove** on the old v1 "Jobber Tax Calculator
-   Extension" entry first - same name, so check the version says 2.0.1.)
+   Extension" entry first - same name, so check the version says 2.0.5.)
 6. Open any Jobber client/quote/invoice page - badges appear automatically;
    click the extension icon for the full cards.
 
