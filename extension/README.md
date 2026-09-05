@@ -72,6 +72,10 @@ per normalized address for the browser session.
 ## Options page (right-click icon → Options)
 
 - **Endpoints:** data URL, address-shard base URL, legacy backend URL.
+- **Pages to skip:** one path per line (defaults `/clients`, `/requests`,
+  `/quotes`, `/jobs`, `/invoices`). Badges are hidden on those Jobber list
+  views, which show dozens of addresses at once. Only an exact path matches, so
+  detail pages like `/clients/151344135` and `/clients/new` still get badges.
 - **Jobber tax-group labels:** every Ohio jurisdiction combo with its default
   label. Built-in defaults match Steambrite's actual current Jobber groups
   (`OH-Warren`, `OH-Franklin`, `OH-Montgomery-57000`, `OH-Hamilton`, ...).

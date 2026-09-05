@@ -12,6 +12,9 @@ const DEFAULTS = {
   backendUrl: 'https://tax.steambrite.us'
 };
 
+// Keep in sync with DEFAULT_SKIP_PATHS in lib/scan-core.js.
+const DEFAULT_SKIP_PATHS = ['/clients', '/requests', '/quotes', '/jobs', '/invoices'];
+
 document.addEventListener('DOMContentLoaded', () => {
   const dataUrlInput = document.getElementById('dataUrl');
   const shardBaseUrlInput = document.getElementById('shardBaseUrl');
@@ -21,6 +24,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const dataStatusEl = document.getElementById('dataStatus');
   const checkUpdateBtn = document.getElementById('checkUpdateBtn');
   const checkResult = document.getElementById('checkResult');
+  const skipPathsInput = document.getElementById('skipPaths');
+  const saveSkipPathsBtn = document.getElementById('saveSkipPathsBtn');
+  const resetSkipPathsBtn = document.getElementById('resetSkipPathsBtn');
+  const skipPathsStatus = document.getElementById('skipPathsStatus');
   const labelTableBody = document.getElementById('labelTableBody');
   const saveLabelsBtn = document.getElementById('saveLabelsBtn');
   const resetLabelsBtn = document.getElementById('resetLabelsBtn');
@@ -29,6 +36,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let comboRows = []; // [{comboKey, input}]
 
   loadConfig();
+  loadSkipPaths();
   loadDataStatus();
   loadCombos();
 
@@ -56,6 +64,46 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
       flash(configStatus, 'Saved');
+    });
+  });
+
+  /* --------------------------- skipped pages -------------------------- */
+
+  function linesToPaths(text) {
+    return String(text || '')
+      .split('\n')
+      .map(l => l.trim())
+      .filter(Boolean);
+  }
+
+  function loadSkipPaths() {
+    chrome.storage.sync.get('skipPaths', (st) => {
+      if (chrome.runtime.lastError) return;
+      const paths = st && Array.isArray(st.skipPaths) ? st.skipPaths : DEFAULT_SKIP_PATHS;
+      skipPathsInput.value = paths.join('\n');
+    });
+  }
+
+  saveSkipPathsBtn.addEventListener('click', () => {
+    const paths = linesToPaths(skipPathsInput.value);
+    chrome.storage.sync.set({ skipPaths: paths }, () => {
+      if (chrome.runtime.lastError) {
+        flash(skipPathsStatus, 'Save failed: ' + chrome.runtime.lastError.message, true);
+        return;
+      }
+      skipPathsInput.value = paths.join('\n');
+      flash(skipPathsStatus, paths.length ? 'Saved ' + paths.length + ' path(s)' : 'Saved (nothing skipped)');
+    });
+  });
+
+  resetSkipPathsBtn.addEventListener('click', () => {
+    chrome.storage.sync.set({ skipPaths: DEFAULT_SKIP_PATHS.slice() }, () => {
+      if (chrome.runtime.lastError) {
+        flash(skipPathsStatus, 'Reset failed: ' + chrome.runtime.lastError.message, true);
+        return;
+      }
+      skipPathsInput.value = DEFAULT_SKIP_PATHS.join('\n');
+      flash(skipPathsStatus, 'Reset to defaults');
     });
   });
 

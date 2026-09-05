@@ -1,7 +1,8 @@
 /*
  * lib/scan-core.js — pure (DOM-free) logic for the Jobber page scanner.
- * Field classification, group assembly, placeholder detection and read-only
- * address-block parsing live here so plain `node` tests can exercise them.
+ * Field classification, group assembly, placeholder detection, read-only
+ * address-block parsing and page-skip rules live here so plain `node` tests
+ * can exercise them.
  * Exposes globalThis.TaxExtScanCore in extension contexts, module.exports in node.
  */
 (function (root, factory) {
@@ -15,6 +16,46 @@
   }
 })(typeof globalThis !== 'undefined' ? globalThis : this, function (N) {
   'use strict';
+
+  /* --------------------------- page skip rules ------------------------ */
+
+  // Jobber list views: dozens of addresses per screen, so badges there are
+  // noise. Detail pages under the same prefixes (/clients/151344135,
+  // /clients/new, /jobs/150363992) are NOT skipped — only the exact paths.
+  // Keep in sync with DEFAULT_SKIP_PATHS in options.js.
+  var DEFAULT_SKIP_PATHS = ['/clients', '/requests', '/quotes', '/jobs', '/invoices'];
+
+  /**
+   * Normalize a path for comparison: drop any query string or hash a caller
+   * passed in, lowercase it, force a leading slash (options-page lines may be
+   * typed without one) and strip trailing slashes (except for the root).
+   */
+  function normalizePath(pathname) {
+    var s = String(pathname == null ? '' : pathname).trim();
+    if (!s) return '';
+    s = s.split('#')[0].split('?')[0].toLowerCase();
+    if (!s) return '';
+    if (s.charAt(0) !== '/') s = '/' + s;
+    while (s.length > 1 && s.charAt(s.length - 1) === '/') s = s.slice(0, -1);
+    return s;
+  }
+
+  /**
+   * True when the normalized pathname EXACTLY matches one of the normalized
+   * skipPaths. Exact-only by design: /clients is a list page, /clients/151344135
+   * and /clients/new are not. An empty array skips nothing; a missing/invalid
+   * list falls back to DEFAULT_SKIP_PATHS.
+   */
+  function isSkippedPath(pathname, skipPaths) {
+    var list = Array.isArray(skipPaths) ? skipPaths : DEFAULT_SKIP_PATHS;
+    var p = normalizePath(pathname);
+    if (!p) return false;
+    for (var i = 0; i < list.length; i++) {
+      var s = normalizePath(list[i]);
+      if (s && s === p) return true;
+    }
+    return false;
+  }
 
   /**
    * Tokenize an attribute string on _ [ ] whitespace and -, then split
@@ -232,6 +273,9 @@
   }
 
   return {
+    DEFAULT_SKIP_PATHS: DEFAULT_SKIP_PATHS,
+    normalizePath: normalizePath,
+    isSkippedPath: isSkippedPath,
     tokenize: tokenize,
     classifyField: classifyField,
     extractGroupPrefix: extractGroupPrefix,

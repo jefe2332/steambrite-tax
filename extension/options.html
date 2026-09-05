@@ -34,6 +34,22 @@
     </section>
 
     <section class="card">
+      <h2>Pages to skip</h2>
+      <p class="hint">
+        Jobber list views show dozens of addresses at once, so suggestions are hidden there.
+        One path per line, query strings ignored. Only an exact path is skipped, so detail
+        pages such as /clients/151344135, /jobs/150363992 and /clients/new still get badges.
+      </p>
+      <label for="skipPaths">Pages to skip (one path per line)</label>
+      <textarea id="skipPaths" rows="6" spellcheck="false"></textarea>
+      <div class="actions">
+        <button id="saveSkipPathsBtn" class="primary-btn">Save skip list</button>
+        <button id="resetSkipPathsBtn" class="secondary-btn">Reset to defaults</button>
+        <span id="skipPathsStatus" class="status-msg"></span>
+      </div>
+    </section>
+
+    <section class="card">
       <h2>Jobber tax-group labels</h2>
       <p class="hint">
         Each Ohio jurisdiction (county + optional transit district) maps to the Jobber tax-group

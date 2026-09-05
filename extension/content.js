@@ -48,16 +48,19 @@
   let observer = null;
   let debounceTimer = null;
   let suppressObserver = false;
+  let skipPaths = S.DEFAULT_SKIP_PATHS.slice(); // list pages: scan nothing there
 
   function onTeardown() {
     // A newer copy of this script just loaded — this instance must go inert:
     // stop observing, cancel pending rescans, stop answering messages.
     dead = true;
     document.removeEventListener(TEARDOWN_EVENT, onTeardown);
+    window.removeEventListener('popstate', onPopState);
     try { if (observer) observer.disconnect(); } catch (e) { }
     observer = null;
     clearTimeout(debounceTimer);
     try { chrome.runtime.onMessage.removeListener(onRuntimeMessage); } catch (e) { }
+    try { chrome.storage.onChanged.removeListener(onStorageChanged); } catch (e) { }
     // Stale badges/data-tax-ext-* attributes left behind are removed by the
     // NEW instance's cleanupPreviousScan() on its first scan.
   }
@@ -278,7 +281,29 @@
     document.querySelectorAll('.tax-ext-badge').forEach(el => el.remove());
   }
 
+  /* --------------------------- skipped pages --------------------------- */
+
+  function isSkippedPage() {
+    // Jobber is an SPA: the URL changes via pushState WITHOUT a reload, so this
+    // must be evaluated on every scan, never cached at boot.
+    try { return S.isSkippedPath(location.pathname, skipPaths); } catch (e) { return false; }
+  }
+
+  function goQuiet() {
+    // Skipped page (a Jobber list view): drop whatever a previous page left
+    // behind — SPA navigation can carry badges/attributes across URLs — and
+    // inject nothing.
+    suppressObserver = true;
+    try {
+      cleanupPreviousScan();
+      lastScanAddresses = [];
+    } finally {
+      setTimeout(() => { suppressObserver = false; }, 0);
+    }
+  }
+
   function scan() {
+    if (isSkippedPage()) { goQuiet(); return []; }
     scanGen += 1;
     const gen = scanGen;
     suppressObserver = true;
@@ -475,6 +500,7 @@
   }
 
   function injectAllBadges() {
+    if (isSkippedPage()) return;
     lastScanAddresses.forEach(addr => {
       const result = resultCache.get(addr.key);
       if (result) injectBadge(addr, result);
@@ -507,6 +533,7 @@
 
   function runAutoScan() {
     if (dead) return;
+    if (isSkippedPage()) { goQuiet(); return; }
     const addresses = safeScan();
     if (!addresses.length) return;
     injectAllBadges();          // fix #9: re-inject from cache without re-fetching
@@ -554,6 +581,11 @@
         return false;
       }
       if (msg && msg.action === 'SCAN_ADDRESSES') {
+        if (isSkippedPage()) {
+          goQuiet();
+          sendResponse({ ok: true, addresses: [], skipped: 'list-page' });
+          return false;
+        }
         const addresses = safeScan();
         // kick off async badge lookups too, but respond immediately
         if (addresses.length) requestLookups(addresses);
@@ -574,10 +606,43 @@
   }
   chrome.runtime.onMessage.addListener(onRuntimeMessage);
 
+  /* ------------------------------ settings ----------------------------- */
+
+  function loadSkipPaths() {
+    try {
+      chrome.storage.sync.get('skipPaths', (st) => {
+        if (chrome.runtime.lastError || dead) return;
+        if (!st || !Array.isArray(st.skipPaths)) return;
+        const before = skipPaths.join('\n');
+        skipPaths = st.skipPaths.slice();
+        // Saved settings can land after the first scan — re-run if they differ.
+        if (skipPaths.join('\n') !== before) scheduleScan();
+      });
+    } catch (e) { }
+  }
+
+  function onStorageChanged(changes, area) {
+    if (dead || area !== 'sync' || !changes || !changes.skipPaths) return;
+    const next = changes.skipPaths.newValue;
+    skipPaths = Array.isArray(next) ? next.slice() : S.DEFAULT_SKIP_PATHS.slice();
+    // Re-evaluate this page under the new list: runAutoScan cleans up if the
+    // page just became skipped, and scans if it just stopped being skipped.
+    scheduleScan();
+  }
+  try { chrome.storage.onChanged.addListener(onStorageChanged); } catch (e) { }
+
   /* ------------------------------- boot -------------------------------- */
+
+  function onPopState() {
+    // Back/forward within the SPA changes the URL with no reload — rescan so
+    // list -> detail -> list transitions re-run the skip check.
+    scheduleScan();
+  }
+  window.addEventListener('popstate', onPopState);
 
   function boot() {
     if (dead) return;
+    loadSkipPaths();
     startObserver();
     setTimeout(runAutoScan, 600);
   }

@@ -144,6 +144,13 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function handleScanResponse(tab, scanResp, done) {
+    if (scanResp && scanResp.skipped === 'list-page') {
+      // The page is on the skip list (Options -> Pages to skip), so the content
+      // script deliberately scanned nothing.
+      showInfo('Suggestions are hidden on list pages. Open a client, request, quote, or job to see them.');
+      done('List page skipped');
+      return;
+    }
     const addresses = scanResp && scanResp.addresses ? scanResp.addresses : [];
     if (!addresses.length) {
       showInfo('No complete addresses found on this page. Open a client, property, quote or invoice.');

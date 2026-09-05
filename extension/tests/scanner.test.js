@@ -322,10 +322,128 @@ section('10. Self-heal + idempotency wiring (source checks, v2.0.3)');
   // -- manifest --
   check("manifest has 'scripting' permission", manifest.permissions.includes('scripting'),
     JSON.stringify(manifest.permissions));
-  check('manifest version is 2.0.3', manifest.version === '2.0.3', manifest.version);
+  check('manifest version is 2.0.4', manifest.version === '2.0.4', manifest.version);
   check('manifest content_scripts order is normalize, scan-core, content',
     JSON.stringify(manifest.content_scripts[0].js) === JSON.stringify(['lib/normalize.js', 'lib/scan-core.js', 'content.js']),
     JSON.stringify(manifest.content_scripts[0].js));
+}
+
+/* ------------------------------------------------------------------ */
+section('11. Skipped list pages (v2.0.4)');
+{
+  const sk = S.isSkippedPath;
+  const D = S.DEFAULT_SKIP_PATHS;
+
+  check('defaults are the five Jobber list views',
+    JSON.stringify(D) === JSON.stringify(['/clients', '/requests', '/quotes', '/jobs', '/invoices']),
+    JSON.stringify(D));
+
+  // exact matches -> skipped
+  check('/clients is skipped', sk('/clients', D) === true);
+  check('/requests is skipped', sk('/requests', D) === true);
+  check('/quotes is skipped', sk('/quotes', D) === true);
+  check('/jobs is skipped', sk('/jobs', D) === true);
+  check('/invoices is skipped', sk('/invoices', D) === true);
+
+  // trailing slash
+  check('/clients/ (trailing slash) is skipped', sk('/clients/', D) === true);
+  check("skip entry written as '/clients/' still matches /clients",
+    sk('/clients', ['/clients/']) === true);
+  check("skip entry written without a leading slash still matches",
+    sk('/clients', ['clients']) === true);
+
+  // query strings are not part of location.pathname, but be defensive
+  check('query string is ignored if one is passed in',
+    sk('/clients?nav_label=Clients&nav_source=sidebar', D) === true);
+  check('hash is ignored if one is passed in', sk('/quotes#top', D) === true);
+
+  // detail pages and forms are NEVER skipped
+  check('/clients/151344135 is NOT skipped', sk('/clients/151344135', D) === false);
+  check('/clients/new is NOT skipped', sk('/clients/new', D) === false);
+  check('/jobs/150363992 is NOT skipped', sk('/jobs/150363992', D) === false);
+  check('/quotes/12345 is NOT skipped', sk('/quotes/12345', D) === false);
+  check('/requests/12345 is NOT skipped', sk('/requests/12345', D) === false);
+  check('/clients/151344135/properties/9 is NOT skipped',
+    sk('/clients/151344135/properties/9', D) === false);
+  check('prefix-only lookalikes are NOT skipped (/clients_archive)',
+    sk('/clients_archive', D) === false);
+  check('/ (root) is NOT skipped', sk('/', D) === false);
+  check('/schedule is NOT skipped', sk('/schedule', D) === false);
+
+  // case handling
+  check('/Clients is skipped (pathname case-insensitive)', sk('/Clients', D) === true);
+  check('mixed-case skip entry matches lowercase pathname',
+    sk('/clients', ['/CLIENTS']) === true);
+
+  // custom lists
+  check('custom list skips only what it names',
+    sk('/schedule', ['/schedule']) === true && sk('/clients', ['/schedule']) === false);
+  check('empty list skips nothing', sk('/clients', []) === false);
+  check('missing list falls back to defaults', sk('/clients', undefined) === true);
+  check('non-array list falls back to defaults', sk('/clients', '/clients') === true);
+  check('empty/garbage entries are ignored', sk('/clients', ['', '   ', '/clients']) === true);
+  check('empty pathname is never skipped', sk('', D) === false && sk(null, D) === false);
+}
+
+/* ------------------------------------------------------------------ */
+section('12. Skip wiring in content.js / popup.js / options.js (source checks)');
+{
+  const fs4 = require('fs');
+  const contentSrc = fs4.readFileSync(path.join(__dirname, '..', 'content.js'), 'utf8');
+  const popupSrc = fs4.readFileSync(path.join(__dirname, '..', 'popup.js'), 'utf8');
+  const optionsSrc = fs4.readFileSync(path.join(__dirname, '..', 'options.js'), 'utf8');
+  const optionsHtml = fs4.readFileSync(path.join(__dirname, '..', 'options.html'), 'utf8');
+
+  // -- content.js --
+  check('isSkippedPage reads location.pathname per call (SPA-safe, not cached at boot)',
+    /function isSkippedPage\(\)[\s\S]{0,300}S\.isSkippedPath\(location\.pathname, skipPaths\)/.test(contentSrc));
+  check('scan() bails out on a skipped page',
+    /function scan\(\) \{\s*if \(isSkippedPage\(\)\) \{ goQuiet\(\); return \[\]; \}/.test(contentSrc));
+  check('runAutoScan (auto + observer + popstate path) bails out on a skipped page',
+    /function runAutoScan\(\) \{\s*if \(dead\) return;\s*if \(isSkippedPage\(\)\) \{ goQuiet\(\); return; \}/.test(contentSrc));
+  check('goQuiet cleans up leftover badges from the previous page',
+    /function goQuiet\(\)[\s\S]{0,300}cleanupPreviousScan\(\)[\s\S]{0,120}lastScanAddresses = \[\]/.test(contentSrc));
+  check("SCAN_ADDRESSES answers { ok: true, addresses: [], skipped: 'list-page' }",
+    /sendResponse\(\{ ok: true, addresses: \[\], skipped: 'list-page' \}\)/.test(contentSrc));
+  check('injectAllBadges refuses to inject on a skipped page',
+    /function injectAllBadges\(\) \{\s*if \(isSkippedPage\(\)\) return;/.test(contentSrc));
+  check('skipPaths defaults to the shared scan-core list',
+    /let skipPaths = S\.DEFAULT_SKIP_PATHS\.slice\(\)/.test(contentSrc));
+  check('skipPaths loaded from chrome.storage.sync at boot',
+    /chrome\.storage\.sync\.get\('skipPaths'/.test(contentSrc) &&
+    /function boot\(\)[\s\S]{0,160}loadSkipPaths\(\)/.test(contentSrc));
+  check('storage.onChanged keeps skipPaths live (named listener, removed on teardown)',
+    /chrome\.storage\.onChanged\.addListener\(onStorageChanged\)/.test(contentSrc) &&
+    /chrome\.storage\.onChanged\.removeListener\(onStorageChanged\)/.test(contentSrc));
+  check('popstate schedules a rescan (list -> detail -> list) and unbinds on teardown',
+    /window\.addEventListener\('popstate', onPopState\)/.test(contentSrc) &&
+    /window\.removeEventListener\('popstate', onPopState\)/.test(contentSrc));
+  check('MutationObserver path re-evaluates the URL (goes through runAutoScan)',
+    /debounceTimer = setTimeout\(runAutoScan, 800\)/.test(contentSrc));
+
+  // -- popup.js --
+  check('popup shows the list-page info message',
+    /skipped === 'list-page'/.test(popupSrc) &&
+    /Suggestions are hidden on list pages\. Open a client, request, quote, or job to see them\./.test(popupSrc));
+
+  // -- options.js / options.html --
+  const optDefaults = (optionsSrc.match(/const DEFAULT_SKIP_PATHS = (\[[^\]]*\]);/) || [])[1];
+  check('options.js DEFAULT_SKIP_PATHS matches lib/scan-core.js',
+    optDefaults !== undefined &&
+    JSON.stringify(JSON.parse(optDefaults.replace(/'/g, '"'))) === JSON.stringify(S.DEFAULT_SKIP_PATHS),
+    optDefaults);
+  check('options page has the skip-list textarea and both buttons',
+    /<textarea id="skipPaths"/.test(optionsHtml) &&
+    /id="saveSkipPathsBtn"/.test(optionsHtml) &&
+    /id="resetSkipPathsBtn"/.test(optionsHtml));
+  check('options page label reads "Pages to skip (one path per line)"',
+    /Pages to skip \(one path per line\)/.test(optionsHtml));
+  check('options.js saves skipPaths to chrome.storage.sync',
+    /chrome\.storage\.sync\.set\(\{ skipPaths: /.test(optionsSrc));
+  check('options.js has a reset-to-defaults handler',
+    /resetSkipPathsBtn\.addEventListener\('click'/.test(optionsSrc));
+  check('no innerHTML with dynamic strings added to options.js/popup.js/content.js',
+    !/innerHTML\s*=/.test(optionsSrc) && !/innerHTML\s*=/.test(popupSrc) && !/innerHTML\s*=/.test(contentSrc));
 }
 
 /* ------------------------------------------------------------------ */
