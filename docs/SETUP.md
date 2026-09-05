@@ -47,3 +47,28 @@ Ohio rate changes only take effect on quarter boundaries (Jan 1 / Apr 1 / Jul 1 
 ## Verification
 
 `backend/TESTING.md` records the API smoke tests. The pipeline's `VERIFICATION.md` (regenerated each build) records the 13-group check suite, including split-district spot checks (Franklin 8.00% everywhere; Delaware 7.00/8.00; Licking 7.25/8.25; Fairfield 6.75/7.75; Union 7.00/8.00) and multi-county ZIP resolution cases (43082, 43068, 43004).
+
+## 5. Auto-updating code for the team (Chrome Web Store, unlisted)
+
+Side-loaded extensions never auto-update. Publishing the extension as an **unlisted** Chrome Web Store item fixes that permanently: only people with the install link can find it, and Chrome pushes every new version to all installs automatically (usually within a few hours).
+
+One-time setup (about 20 minutes plus Google's review wait):
+
+1. Go to https://chrome.google.com/webstore/devconsole, sign in with the business Google account, and pay the one-time $5 developer registration fee.
+2. Click **New item** and upload `chrome-tax-extension-v2.zip` (the zip already has `manifest.json` at its root, which is the format the store requires).
+3. Store listing tab:
+   - Name: Jobber Tax Calculator Extension
+   - Summary: Suggests the exact Ohio sales-tax jurisdiction and matching Jobber tax group for addresses on Jobber pages.
+   - Category: Productivity. Language: English.
+   - Screenshots: at least one, 1280x800 (or 640x400). A screenshot of the badge on a client page works well.
+   - Icon: the 128px Mr. Brite icon from `extension/icons/icon128.png`.
+4. Privacy practices tab (required even for unlisted):
+   - Single purpose: "Looks up Ohio sales-tax rates for customer addresses shown in Jobber and displays the matching tax group."
+   - Permission justifications: `storage` (saves settings and cached rate data), `alarms` (checks for updated rate data every few days), `activeTab` and `scripting` (reads addresses on the open Jobber page and shows the suggestion badge), host permissions (secure.getjobber.com to read pages; geocoding.geo.census.gov and geo.fcc.gov to resolve a street address to its county; github.io and storage.googleapis.com to download rate data; tax.steambrite.us as a fallback lookup).
+   - Data usage: declare that the extension sends customer street addresses to the geocoding services and the fallback backend for the sole purpose of the lookup, that this data is not sold or used for anything else, and check the certification boxes.
+5. Distribution tab: **Visibility = Unlisted**. Submit for review. First review commonly takes one to three business days.
+6. When approved, copy the store link and send it to the team once. Each person installs from the link and removes their old unpacked copy.
+
+Releasing an update afterwards: bump `version` in `extension/manifest.json`, rebuild the zip, open the item in the developer console, upload the new zip, click Publish. Everyone is updated automatically after review (updates to an existing item usually clear within hours). No reinstalls, no walkthroughs.
+
+Optional later step: the Chrome Web Store has a publish API. A GitHub Action can upload and publish the zip on every push that changes `extension/`, which makes releases fully hands-off.
