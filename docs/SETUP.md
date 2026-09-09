@@ -72,3 +72,18 @@ One-time setup (about 20 minutes plus Google's review wait):
 Releasing an update afterwards: bump `version` in `extension/manifest.json`, rebuild the zip, open the item in the developer console, upload the new zip, click Publish. Everyone is updated automatically after review (updates to an existing item usually clear within hours). No reinstalls, no walkthroughs.
 
 Optional later step: the Chrome Web Store has a publish API. A GitHub Action can upload and publish the zip on every push that changes `extension/`, which makes releases fully hands-off.
+
+### 5b. Google Workspace admins: force-install instead of sending a link
+
+If the team signs into Chrome with Workspace accounts, the admin can push the store item to everyone and skip the install step entirely.
+
+1. admin.google.com → **Devices → Chrome → Apps and extensions → Users and browsers**.
+2. Pick the organizational unit (the whole org, or just the team's OU).
+3. Click the yellow **+** → **Add Chrome app or extension by ID** → paste `pikmlhflbfdgabnlgjeciebobjfompcc` → source "From the Chrome Web Store" → Save.
+4. Set the installation policy to **Force install + pin to browser toolbar** → Save.
+5. Policy reaches each browser within minutes to a few hours; a Chrome restart (or chrome://policy → Reload policies) speeds it up.
+
+Requirements and notes:
+- Only applies to Chrome profiles signed in with a Workspace account (profile icon → sign in). A personal profile does not receive it.
+- Force-installed extensions cannot be removed by users, and updates still flow from the Web Store publish.
+- The old developer-mode copy on each machine is separate; ask each person to remove it once from chrome://extensions so they do not run two copies.
