@@ -130,14 +130,24 @@ function download() {
     }
   }
 
-  for (const [name, url] of jobs) {
+  for (const [name, url, direct] of jobs) {
     const dest = path.join(RAW, name);
     if (!FRESH && fs.existsSync(dest) && fs.statSync(dest).size > 0) {
       log(`  skip (cached): ${name}`);
       continue;
     }
     log(`  downloading: ${name}`);
-    curl(url, dest);
+    try {
+      curl(url, dest);
+    } catch (e) {
+      // The Finder's download proxy rejects upper-case extensions (403). The
+      // state named the 2026Q4 rate file "OHR2026Q4SEP17.CSV"; the identical
+      // file is served under a lower-case extension, so retry with that.
+      const lowered = direct && direct.replace(/\.([A-Za-z0-9]+)$/, (m) => m.toLowerCase());
+      if (!lowered || lowered === direct) throw e;
+      log(`  retrying with lower-case extension: ${path.basename(lowered)}`);
+      curl(proxied(lowered), dest);
+    }
   }
 
   // Extract the boundary zip.
@@ -551,10 +561,16 @@ function build() {
       `(${(shardStats.totalWithoutStreets / 1e6).toFixed(2)} -> ${(shardStats.total / 1e6).toFixed(2)} MB)`);
 
     // ---- verification ----
-    require('./verify.js').run({
+    const vs = require('./verify.js').run({
       main, addrDoc, rawDir: RAW, distDir: DIST, stateRate,
       countyNames, transitRef, rates, boundary: b, sizes, src,
     });
+    // Never publish data that fails verification: a non-zero exit stops the
+    // GitHub Action before the Pages deploy, so consumers keep last-known-good.
+    if (vs && vs.fail > 0) {
+      console.error(`VERIFICATION FAILED (${vs.fail} check group(s)); see dist/VERIFICATION.md`);
+      process.exitCode = 1;
+    }
 
     return { main, sizes };
   });

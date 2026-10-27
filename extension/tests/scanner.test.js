@@ -322,7 +322,7 @@ section('10. Self-heal + idempotency wiring (source checks, v2.0.3)');
   // -- manifest --
   check("manifest has 'scripting' permission", manifest.permissions.includes('scripting'),
     JSON.stringify(manifest.permissions));
-  check('manifest version is 2.0.6', manifest.version === '2.0.6', manifest.version);
+  check('manifest version is 2.0.7', manifest.version === '2.0.7', manifest.version);
   check('manifest content_scripts order is normalize, scan-core, content',
     JSON.stringify(manifest.content_scripts[0].js) === JSON.stringify(['lib/normalize.js', 'lib/scan-core.js', 'content.js']),
     JSON.stringify(manifest.content_scripts[0].js));
@@ -449,4 +449,22 @@ section('12. Skip wiring in content.js / popup.js / options.js (source checks)')
 /* ------------------------------------------------------------------ */
 console.log('\n================================');
 console.log('TOTAL: ' + pass + ' passed, ' + fail + ' failed');
-process.exit(fail ? 1 : 0);
+// ---- dataStaleness (v2.0.7) ----
+(function () {
+  const S2 = require('../lib/scan-core.js');
+  const f = S2.dataStaleness;
+  let pass = 0, fail = 0;
+  const ok = (name, cond) => { if (cond) pass++; else { fail++; console.log('  FAIL ' + name); } };
+  ok('Q1 data in late Oct is stale', f('2026Q1', new Date(2026, 9, 27)).stale === true);
+  ok('Q4 data in late Oct is fresh', f('2026Q4', new Date(2026, 9, 27)).stale === false);
+  ok('Q3 data Oct 5 within grace', f('2026Q3', new Date(2026, 9, 5)).stale === false);
+  ok('Q3 data Oct 20 stale', f('2026Q3', new Date(2026, 9, 20)).stale === true);
+  ok('next-quarter data (published early) fresh', f('2027Q1', new Date(2026, 10, 15)).stale === false);
+  ok('year rollover: 2026Q4 on Jan 5 2027 grace', f('2026Q4', new Date(2027, 0, 5)).stale === false);
+  ok('year rollover: 2026Q4 on Jan 20 2027 stale', f('2026Q4', new Date(2027, 0, 20)).stale === true);
+  ok('garbage version not stale', f('unknown', new Date()).stale === false);
+  ok('currentQ reported', f('2026Q1', new Date(2026, 9, 27)).currentQ === '2026Q4');
+  console.log('dataStaleness: ' + pass + ' passed, ' + fail + ' failed');
+  if (fail) process.exitCode = 1; globalThis.__staleFail = fail;
+})();
+process.exit((fail || globalThis.__staleFail) ? 1 : 0);

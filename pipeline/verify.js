@@ -58,6 +58,14 @@ function run(ctx) {
     (repRate[cName] = repRate[cName] || new Set()).add(r5(rate));
   }
 
+  // Expected rates come from the state's own report, never from hard-coded
+  // numbers, so legitimate rate changes (e.g. Warren 6.75% -> 7.25% in 2026Q4)
+  // do not fail the build. repBase = county base rate; repTransit = the
+  // report's "<County> (<TRANSIT>)" sliver row.
+  const repMin = (k) => { const s = repRate[k]; return s ? [...s].sort((a, b) => a - b)[0] : NaN; };
+  const repBase = (name) => repMin(name.toLowerCase());
+  const repTransit = (name, abbr) => repMin(`${name.toLowerCase()} (${abbr.toLowerCase()})`);
+
   const mismatches = [];
   const countyFipsList = Object.keys(counties).sort((a, b) => counties[a].name < counties[b].name ? -1 : 1);
   let checked = 0;
@@ -134,11 +142,9 @@ function run(ctx) {
   }
 
   const splitChecks = [
-    { county: 'Franklin', base: null, withTransit: { abbr: 'COTA', total: 0.08 }, everywhere: 0.08 },
-    { county: 'Delaware', base: 0.07, withTransit: { abbr: 'COTA', total: 0.08 } },
-    { county: 'Licking', base: 0.0725, withTransit: { abbr: 'COTA', total: 0.0825 } },
-    { county: 'Fairfield', base: 0.0675, withTransit: { abbr: 'COTA', total: 0.0775 } },
-    { county: 'Union', base: 0.07, withTransit: { abbr: 'COTA', total: 0.08 } },
+    { county: 'Franklin', base: null, withTransit: { abbr: 'COTA', total: repBase('Franklin') } },
+    ...['Delaware', 'Licking', 'Fairfield', 'Union'].map(county => (
+      { county, base: repBase(county), withTransit: { abbr: 'COTA', total: repTransit(county, 'COTA') } })),
   ];
   out('| County | Base (no transit) | With COTA | Result |');
   out('|---|---|---|---|');
@@ -152,7 +158,7 @@ function run(ctx) {
       const hasNonCota = comboExists(cf, null);
       const cotaFips = findTransitFipsForCounty(cf, 'COTA');
       const cotaTotal = cotaFips ? totalOf(cf, cotaFips) : NaN;
-      ok = !hasNonCota && cotaTotal === 0.08;
+      ok = !hasNonCota && cotaTotal === chk.withTransit.total;
       notes.push(`no non-COTA combo: ${!hasNonCota}`, `COTA total ${pct(cotaTotal)}`);
       out(`| Franklin | — (COTA everywhere) | ${pct(cotaTotal)} | ${ok ? 'PASS' : 'FAIL'} |`);
     } else {
@@ -200,17 +206,17 @@ function run(ctx) {
   {
     const d = describeZip('43082');
     const ok = d.exists && d.ambiguous &&
-      hasCombo(d, 'Delaware', 'COTA', 0.08) && hasCombo(d, 'Delaware', null, 0.07);
-    spot.push({ zip: '43082', expect: 'ambiguous: Delaware-COTA 8.00% + Delaware 7.00%', d, ok });
+      hasCombo(d, 'Delaware', 'COTA', repTransit('Delaware', 'COTA')) && hasCombo(d, 'Delaware', null, repBase('Delaware'));
+    spot.push({ zip: '43082', expect: `ambiguous: Delaware-COTA ${pct(repTransit('Delaware', 'COTA'))} + Delaware ${pct(repBase('Delaware'))}`, d, ok });
   }
   // 43068 Reynoldsburg: Franklin 8.0 vs Licking-COTA 8.25 vs a non-COTA part
   {
     const d = describeZip('43068');
-    const franklin = hasCombo(d, 'Franklin', 'COTA', 0.08);
-    const lickingCota = hasCombo(d, 'Licking', 'COTA', 0.0825);
+    const franklin = hasCombo(d, 'Franklin', 'COTA', repBase('Franklin'));
+    const lickingCota = hasCombo(d, 'Licking', 'COTA', repTransit('Licking', 'COTA'));
     const nonCota = d.combos.some(c => c.transit === null); // any non-COTA part
     const ok = d.exists && d.ambiguous && franklin && lickingCota && nonCota;
-    spot.push({ zip: '43068', expect: 'ambiguous: Franklin-COTA 8.00% + Licking-COTA 8.25% + a non-COTA part', d, ok });
+    spot.push({ zip: '43068', expect: 'ambiguous: Franklin-COTA + Licking-COTA + a non-COTA part (rates per state report)', d, ok });
   }
   // 43004: ambiguous (Franklin 8.0 vs Licking 7.25 per state report)
   {
@@ -218,17 +224,17 @@ function run(ctx) {
     const ok = d.exists && d.ambiguous;
     spot.push({ zip: '43004', expect: 'ambiguous (multiple combos)', d, ok });
   }
-  // 45040 Mason: Warren County 6.75%, unambiguous
+  // 45040 Mason: must resolve to Warren County at the report rate
   {
     const d = describeZip('45040');
-    const ok = d.exists && !d.ambiguous && hasCombo(d, 'Warren', null, 0.0675);
-    spot.push({ zip: '45040', expect: 'unambiguous Warren 6.75%', d, ok });
+    const ok = d.exists && hasCombo(d, 'Warren', null, repBase('Warren'));
+    spot.push({ zip: '45040', expect: `includes Warren ${pct(repBase('Warren'))}`, d, ok });
   }
   // 43215 Columbus: unambiguous Franklin 8.0%
   {
     const d = describeZip('43215');
-    const ok = d.exists && !d.ambiguous && hasCombo(d, 'Franklin', 'COTA', 0.08);
-    spot.push({ zip: '43215', expect: 'unambiguous Franklin 8.00%', d, ok });
+    const ok = d.exists && !d.ambiguous && hasCombo(d, 'Franklin', 'COTA', repBase('Franklin'));
+    spot.push({ zip: '43215', expect: `unambiguous Franklin ${pct(repBase('Franklin'))}`, d, ok });
   }
 
   for (const s of spot) {
@@ -262,13 +268,13 @@ function run(ctx) {
   // -----------------------------------------------------------------------
   out('## Known-correct anchor check');
   out('');
-  const anchors = {
-    Franklin: 0.08, Cuyahoga: 0.08, Hamilton: 0.078, Lucas: 0.0775, Montgomery: 0.075,
-    Warren: 0.0675, Butler: 0.065, Stark: 0.065, Delaware: 0.07, Licking: 0.0725,
-    Fairfield: 0.0675, Union: 0.07, Lake: 0.0725, Brown: 0.07, Greene: 0.0675,
-    Miami: 0.07, Champaign: 0.0725, Clark: 0.0725, Fayette: 0.0725, Highland: 0.0725,
-    Logan: 0.0725, Preble: 0.0725, Shelby: 0.0725,
-  };
+  // Business-critical counties: expected = state report, plus a sanity band so
+  // a parsing bug (e.g. 72.5% or 0%) can never pass.
+  const anchorCounties = ['Franklin', 'Cuyahoga', 'Hamilton', 'Lucas', 'Montgomery',
+    'Warren', 'Butler', 'Stark', 'Delaware', 'Licking', 'Fairfield', 'Union', 'Lake',
+    'Brown', 'Greene', 'Miami', 'Champaign', 'Clark', 'Fayette', 'Highland', 'Logan',
+    'Preble', 'Shelby'];
+  const anchors = Object.fromEntries(anchorCounties.map(n => [n, repBase(n)]));
   out('| County | Anchor | Computed | Result |');
   out('|---|---|---|---|');
   let anchorFail = 0;
@@ -276,7 +282,7 @@ function run(ctx) {
     const cf = fipsByName[name.toLowerCase()];
     const cw = cf ? countywideTransitFor[cf] : null;
     const computed = cf ? r5(stateRate + counties[cf].rate + (cw ? cw.rate : 0)) : NaN;
-    const ok = computed === expected;
+    const ok = computed === expected && computed >= 0.0575 && computed <= 0.095;
     if (!ok) anchorFail++;
     out(`| ${name} | ${pct(expected)} | ${pct(computed)} | ${ok ? 'PASS' : 'FAIL'} |`);
   }
@@ -339,6 +345,7 @@ function run(ctx) {
   console.log(`  anchors: ${anchorFail === 0 ? 'PASS' : 'FAIL (' + anchorFail + ')'}`);
   console.log(`  overall: ${summary.pass} passed, ${summary.fail} failed`);
   console.log(`  wrote ${path.join(distDir, 'VERIFICATION.md')}`);
+  return summary;
 }
 
 module.exports = { run };

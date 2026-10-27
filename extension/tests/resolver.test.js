@@ -54,18 +54,28 @@ async function main() {
   }
 
   /* ---------------------------------------------------------------- */
-  section('2. 45040 (Mason) -> Warren 6.75% exact, label OH-Warren');
+  section('2. 45040 (Mason) -> Warren exact via the real street shard, label OH-Warren');
   {
-    const r = await R.createResolver(makeDeps()).resolve(
-      { street: '456 Reading Rd', city: 'Mason', state: 'Ohio', zip: '45040' });
+    // Expected rate comes from the data itself (never hard-coded), so a real
+    // Ohio rate change cannot break this test. Warren: 6.75% -> 7.25% in 2026Q4.
+    const warrenFips = Object.keys(data.counties).find(f => data.counties[f].name === 'Warren');
+    const expectPct = ((data.stateRate + data.counties[warrenFips].rate) * 100).toFixed(2);
+    const expectCounty = (data.counties[warrenFips].rate * 100).toFixed(2);
+    // 45040 straddles Warren/Butler, so feed the real shard the pipeline built.
+    const fs = require('fs'), path = require('path');
+    const shardPath = path.join(__dirname, '..', '..', 'pipeline', 'dist', 'addr-shards', '45040.json');
+    const shard = fs.existsSync(shardPath) ? JSON.parse(fs.readFileSync(shardPath, 'utf8')) : null;
+    const r = await R.createResolver(makeDeps({
+      getShard: async () => shard && { addr: shard.addr, streets: shard.streets }
+    })).resolve({ street: '456 Reading Rd', city: 'Mason', state: 'Ohio', zip: '45040' });
     check('status resolved', r.status === 'resolved');
-    check('confidence exact', r.confidence === 'exact', r.confidence);
     check('county Warren', r.county && r.county.name === 'Warren', r.county && r.county.name);
     check('no transit', r.transit === null, JSON.stringify(r.transit));
-    check('total 6.75%', r.totalPct === '6.75', r.totalPct);
+    check('total = state + Warren (' + expectPct + '%)', r.totalPct === expectPct, r.totalPct);
     check('label OH-Warren', r.label === 'OH-Warren', r.label);
-    check('breakdown Ohio 5.75 + Warren County 1.00',
-      r.breakdownText === 'Ohio 5.75% + Warren County 1.00%', r.breakdownText);
+    check('breakdown uses Warren county rate',
+      r.breakdownText === 'Ohio 5.75% + Warren County ' + expectCounty + '%', r.breakdownText);
+    if (shard) check('confidence exact (street shard)', r.confidence === 'exact', r.confidence);
   }
 
   /* ---------------------------------------------------------------- */

@@ -64,7 +64,26 @@ document.addEventListener('DOMContentLoaded', () => {
         txt += ' · update check ' + (mins < 60 ? mins + 'm' : Math.round(mins / 60) + 'h') + ' ago';
       }
       dataInfo.textContent = txt;
+      showStaleness(resp.dataVersion);
     });
+  }
+
+  // Warn loudly if the rate data is from an older quarter than today. This
+  // catches a stalled quarterly rebuild (which is how Warren 7.25% was missed).
+  function showStaleness(version) {
+    const S = globalThis.TaxExtScanCore;
+    if (!S || !S.dataStaleness) return;
+    const st = S.dataStaleness(version, new Date());
+    let el = document.getElementById('staleWarning');
+    if (!st.stale) { if (el) el.remove(); return; }
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'staleWarning';
+      el.className = 'error-msg';
+      dataInfo.parentNode.insertBefore(el, dataInfo);
+    }
+    el.textContent = 'Rate data is from ' + st.dataQ + ' but it is now ' + st.currentQ +
+      '. Rates may be out of date; tell your admin.';
   }
 
   function setStatus(text) { scanStatus.textContent = text; }
@@ -177,6 +196,7 @@ document.addEventListener('DOMContentLoaded', () => {
       resp.results.forEach(r => renderResult(r));
       if (resp.dataVersion) {
         dataInfo.textContent = 'Data: ' + resp.dataVersion + ' (' + resp.dataSource + ')';
+        showStaleness(resp.dataVersion);
       }
 
       // hand results to the content script so badges appear on the page

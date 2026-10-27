@@ -272,10 +272,32 @@
     return null;
   }
 
+  /**
+   * Is the rate data older than the current calendar quarter?
+   * version: "2026Q4"-style data version. The state publishes each quarter's
+   * file weeks before it takes effect, so a healthy pipeline is never behind.
+   * A 10-day grace period after each quarter starts covers the rebuild.
+   * Returns { stale, dataQ, currentQ } (stale false when version is unparseable).
+   */
+  function dataStaleness(version, now) {
+    var m = /^(\d{4})Q([1-4])$/.exec(String(version || ''));
+    var d = now instanceof Date ? now : new Date(now || Date.now());
+    var curQ = Math.floor(d.getMonth() / 3) + 1;
+    var currentQ = d.getFullYear() + 'Q' + curQ;
+    if (!m) return { stale: false, dataQ: null, currentQ: currentQ };
+    var dataIdx = parseInt(m[1], 10) * 4 + parseInt(m[2], 10);
+    var curIdx = d.getFullYear() * 4 + curQ;
+    var qStart = new Date(d.getFullYear(), (curQ - 1) * 3, 1);
+    var daysIn = (d - qStart) / 86400000;
+    var stale = dataIdx < curIdx - 1 || (dataIdx === curIdx - 1 && daysIn > 10);
+    return { stale: stale, dataQ: m[1] + 'Q' + m[2], currentQ: currentQ };
+  }
+
   return {
     DEFAULT_SKIP_PATHS: DEFAULT_SKIP_PATHS,
     normalizePath: normalizePath,
     isSkippedPath: isSkippedPath,
+    dataStaleness: dataStaleness,
     tokenize: tokenize,
     classifyField: classifyField,
     extractGroupPrefix: extractGroupPrefix,
